@@ -25,31 +25,42 @@ jobs:
           submodules: recursive
           path: pojav
 
-      - name: Set up Java
+      - name: Inspect repository layouts
+        run: |
+          echo "=== Naro root ==="
+          ls -la naro
+          echo "=== Gradle wrappers ==="
+          find naro -maxdepth 4 -name gradlew -type f -print
+          echo "=== Pojav root ==="
+          ls -la pojav
+          echo "=== Pojav modules ==="
+          grep -nE 'include.*app_pojavlauncher|include.*jre_lwjgl3glfw' \
+            pojav/settings.gradle 2>/dev/null || true
+
+      - name: Validate Naro Gradle wrapper
+        run: |
+          if [ ! -f naro/gradlew ]; then
+            echo "::error::Naro repository root has no gradlew wrapper."
+            echo "Check the wrapper location in the repository."
+            exit 1
+          fi
+
+      - name: Set up Java 17
+        if: success()
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Inspect upstream modules
-        working-directory: pojav
-        run: |
-          echo "=== Gradle modules ==="
-          grep -R -nE \
-            'app_pojavlauncher|jre_lwjgl3glfw' \
-            settings.gradle settings.gradle.kts 2>/dev/null || true
-
-          echo "=== Wrapper version ==="
-          chmod +x gradlew
-          ./gradlew --version
-
-      - name: Build existing Naro APK
+      - name: Build Naro APK
+        if: success()
         working-directory: naro
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload Naro APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: naro-debug-apk
