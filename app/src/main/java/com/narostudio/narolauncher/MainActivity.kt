@@ -29,6 +29,8 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import androidx.compose.ui.text.style.TextAlign
+import coil.compose.AsyncImage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -76,13 +78,36 @@ class MainActivity : ComponentActivity() {
 }
 
 private val navItems = listOf("Home", "Versions", "Modrinth", "Skins & Capes", "Accounts", "Settings", "Downloads")
-private val versions = listOf("1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4", "1.19.4", "1.18.2", "1.16.5", "1.12.2", "1.8.9", "1.7.10", "b1.7.3", "a1.2.6", "Snapshot 25w14a")
+private data class GameVersion(val id: String, val type: String)
+
+private suspend fun fetchGameVersions(): List<GameVersion> = withContext(Dispatchers.IO) {
+    val connection = (URL("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+        .openConnection() as HttpURLConnection).apply {
+        connectTimeout = 12000
+        readTimeout = 20000
+        setRequestProperty("User-Agent", "NaroLauncher/1.6.0 (Android)")
+    }
+    try {
+        if (connection.responseCode !in 200..299) {
+            throw IllegalStateException("Mojang manifest HTTP ${connection.responseCode}")
+        }
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val list = json.getJSONArray("versions")
+        (0 until list.length()).map { i ->
+            val item = list.getJSONObject(i)
+            GameVersion(item.getString("id"), item.optString("type", "release"))
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
 private data class ModrinthProject(
     val id: String,
     val slug: String,
     val title: String,
     val description: String,
-    val downloads: Long
+    val downloads: Long,
+    val iconUrl: String
 )
 
 private suspend fun searchModrinth(query: String, type: String): List<ModrinthProject> =
@@ -110,7 +135,8 @@ private suspend fun searchModrinth(query: String, type: String): List<ModrinthPr
                     slug = item.optString("slug"),
                     title = item.optString("title", "Untitled project"),
                     description = item.optString("description", ""),
-                    downloads = item.optLong("downloads", 0)
+                    downloads = item.optLong("downloads", 0),
+                    iconUrl = item.optString("icon_url", "")
                 )
             }
         } finally {
@@ -132,7 +158,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var fps by remember { mutableStateOf(load("fps", "Unlimited")) }
     var graphics by remember { mutableStateOf(load("graphics", "OpenGL ES (engine pending)")) }
     var controls by remember { mutableStateOf(load("controls", "Default")) }
-    var search by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("sodium") }
     var modType by remember { mutableStateOf("Mods") }
     var modResults by remember { mutableStateOf<List<ModrinthProject>>(emptyList()) }
     var modLoading by remember { mutableStateOf(false) }
@@ -162,6 +188,23 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
         }
     }
     var versionFilter by remember { mutableStateOf("All") }
+    var loaderFilter by remember { mutableStateOf(load("loader", "Vanilla")) }
+    var gameVersions by remember { mutableStateOf<List<GameVersion>>(emptyList()) }
+    var versionsLoading by remember { mutableStateOf(false) }
+    var versionsError by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        versionsLoading = true
+        try {
+            gameVersions = fetchGameVersions()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            versionsError = e.message ?: "Could not load Mojang versions."
+        } finally {
+            versionsLoading = false
+        }
+    }
     var toast by remember { mutableStateOf("") }
     var tasks by remember { mutableStateOf(load("tasks", "Sodium|Queued").split("\n").filter { it.contains("|") }) }
     var skinNames by remember { mutableStateOf(load("skins", "Default Steve\nAlex").split("\n").filter { it.isNotBlank() }) }
@@ -221,17 +264,110 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             when(page) {
                 "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={showPlayInfo=true})
                 "Versions" -> {
-                    Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp), modifier=Modifier.fillMaxWidth().padding(bottom=10.dp)) {
-                        OutlinedTextField(search,{search=it},modifier=Modifier.weight(1f).height(52.dp),singleLine=true,placeholder={Text("Search versions…",fontSize=12.sp)},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(10.dp))
-                        listOf("All","Release","Snapshot","Old").forEach { f -> FilterChip(selected=versionFilter==f,onClick={versionFilter=f},label={Text(f,fontSize=11.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Orange,selectedLabelColor=Bg)) }
+                    Text("MOD LOADER", color=Muted, fontSize=10.sp, letterSpacing=1.sp,
+                        modifier=Modifier.padding(bottom=6.dp))
+                    Row(horizontalArrangement=Arrangement.spacedBy(6.dp),
+                        modifier=Modifier.fillMaxWidth().padding(bottom=8.dp)) {
+                        listOf("Vanilla", "Fabric", "Forge", "NeoForge", "Quilt").forEach { loader ->
+                            FilterChip(
+                                selected=loaderFilter==loader,
+                                onClick={
+                                    loaderFilter=loader
+                                    persist("loader", loader)
+                                },
+                                label={Text(loader, fontSize=10.sp)},
+                                colors=FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor=Orange,
+                                    selectedLabelColor=Bg
+                                )
+                            )
+                        }
                     }
-                    LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                        items(versions.filter { it.contains(search,true) && (versionFilter=="All" || (versionFilter=="Release" && it.firstOrNull()?.isDigit()==true) || (versionFilter=="Snapshot" && it.startsWith("Snapshot")) || (versionFilter=="Old" && (it.startsWith("b")||it.startsWith("a")||it=="1.7.10"||it=="1.8.9")) ) }) { v ->
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(horizontal=12.dp, vertical=8.dp), verticalAlignment=Alignment.CenterVertically) {
-                                Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Panel2),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Orange)}
-                                Column(Modifier.weight(1f).padding(start=10.dp)) { Text(v,fontWeight=FontWeight.SemiBold,fontSize=13.sp); Text(if(v.startsWith("Snapshot")) "Snapshot • Mojang" else if(v.startsWith("a")||v.startsWith("b")) "Historical alpha/beta" else "Release • Mojang",fontSize=10.sp,color=Muted) }
-                                if(selectedVersion==v) Text("SELECTED",fontSize=9.sp,color=Green,modifier=Modifier.padding(end=8.dp))
-                                Button(onClick={selectedVersion=v;persist("selectedVersion",v);persist("profileVersion:$profile",v);addTask("Minecraft $v")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),contentPadding=PaddingValues(horizontal=16.dp,vertical=6.dp),modifier=Modifier.height(34.dp)){Text(if(selectedVersion==v) "Install" else "Select",fontSize=11.sp)}
+                    Row(verticalAlignment=Alignment.CenterVertically,
+                        horizontalArrangement=Arrangement.spacedBy(8.dp),
+                        modifier=Modifier.fillMaxWidth().padding(bottom=8.dp)) {
+                        OutlinedTextField(
+                            value=search, onValueChange={search=it},
+                            modifier=Modifier.weight(1f).height(52.dp),
+                            singleLine=true,
+                            placeholder={Text("Search any Minecraft version…", fontSize=12.sp)},
+                            leadingIcon={Icon(Icons.Default.Search,null)},
+                            shape=RoundedCornerShape(10.dp)
+                        )
+                        listOf("All","Release","Snapshot","Old").forEach { f ->
+                            FilterChip(
+                                selected=versionFilter==f, onClick={versionFilter=f},
+                                label={Text(f,fontSize=10.sp)},
+                                colors=FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor=Orange, selectedLabelColor=Bg
+                                )
+                            )
+                        }
+                    }
+                    Text(
+                        when (loaderFilter) {
+                            "Vanilla" -> "Official Mojang versions"
+                            else -> "$loaderFilter selected • loader installation integration is not yet enabled"
+                        },
+                        color=if(loaderFilter=="Vanilla") Muted else Orange,
+                        fontSize=10.sp,
+                        modifier=Modifier.padding(bottom=6.dp)
+                    )
+                    if (versionsLoading) {
+                        Row(Modifier.fillMaxWidth().padding(20.dp),
+                            horizontalArrangement=Arrangement.Center,
+                            verticalAlignment=Alignment.CenterVertically) {
+                            CircularProgressIndicator(color=Orange, modifier=Modifier.size(20.dp))
+                            Text("  Loading Mojang version manifest…", color=Muted, fontSize=12.sp)
+                        }
+                    } else if (versionsError.isNotBlank() && gameVersions.isEmpty()) {
+                        Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(16.dp)) {
+                            Text("Couldn't load versions", color=Orange, fontWeight=FontWeight.Bold)
+                            Text(versionsError, color=Muted, fontSize=11.sp)
+                            TextButton(onClick={ versionsError=""; versionsLoading=true; toast="Reopen Versions to retry manifest loading" }) {
+                                Text("Retry", color=Orange)
+                            }
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                            items(gameVersions.filter { v ->
+                                v.id.contains(search, true) &&
+                                (versionFilter=="All" ||
+                                    (versionFilter=="Release" && v.type=="release") ||
+                                    (versionFilter=="Snapshot" && v.type=="snapshot") ||
+                                    (versionFilter=="Old" && (v.type=="old_alpha" || v.type=="old_beta")))
+                            }, key={it.id}) { item ->
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                        .background(Panel).padding(horizontal=12.dp, vertical=8.dp),
+                                    verticalAlignment=Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Panel2),
+                                        contentAlignment=Alignment.Center) {
+                                        Icon(Icons.Default.Inventory2,null,tint=Orange)
+                                    }
+                                    Column(Modifier.weight(1f).padding(start=10.dp)) {
+                                        Text(item.id,fontWeight=FontWeight.SemiBold,fontSize=13.sp)
+                                        Text("${item.type.replace('_',' ')} • Mojang",
+                                            fontSize=10.sp,color=Muted)
+                                    }
+                                    if(selectedVersion==item.id) {
+                                        Text("SELECTED",fontSize=9.sp,color=Green,
+                                            modifier=Modifier.padding(end=8.dp))
+                                    }
+                                    Button(
+                                        onClick={
+                                            selectedVersion=item.id
+                                            persist("selectedVersion",item.id)
+                                            persist("profileVersion:$profile",item.id)
+                                            if(loaderFilter=="Vanilla") addTask("Minecraft ${item.id}")
+                                            else toast="$loaderFilter selected. Install integration is still required."
+                                        },
+                                        colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),
+                                        contentPadding=PaddingValues(horizontal=14.dp,vertical=6.dp),
+                                        modifier=Modifier.height(34.dp)
+                                    ) { Text(if(selectedVersion==item.id) "Selected" else "Select",fontSize=11.sp) }
+                                }
                             }
                         }
                     }
@@ -313,7 +449,15 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                             .background(Panel2),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Default.Extension, null, tint = Orange)
+                                        if (project.iconUrl.isNotBlank()) {
+                                            AsyncImage(
+                                                model = project.iconUrl,
+                                                contentDescription = "${project.title} icon",
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Extension, null, tint = Orange)
+                                        }
                                     }
                                     Column(
                                         Modifier.weight(1f).padding(horizontal = 12.dp)
@@ -530,7 +674,7 @@ private fun HomePage(profile:String, account:String, version:String, tasks:Int, 
                 Column(Modifier.fillMaxSize().padding(14.dp)) {
                     Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF31583C)),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Color(0xFF9CE06B),modifier=Modifier.size(30.dp))};Column(Modifier.weight(1f).padding(start=10.dp)){Text("Minecraft $version",fontSize=15.sp,fontWeight=FontWeight.Bold);Text("Selected version • Runtime not configured",fontSize=10.sp,color=Muted)};IconButton(onClick=onVersion){Icon(Icons.Default.ExpandMore,null,tint=Muted)}}
                     Spacer(Modifier.height(10.dp))
-                    Button(onClick=onPlay,modifier=Modifier.fillMaxWidth().height(44.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),shape=RoundedCornerShape(9.dp)){Icon(Icons.Default.PlayArrow,null);Text("  PLAY",fontWeight=FontWeight.Black,letterSpacing=1.sp)}
+                    Button(onClick=onPlay,modifier=Modifier.fillMaxWidth().height(44.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),shape=RoundedCornerShape(9.dp)){Icon(Icons.Default.PlayArrow,null,modifier=Modifier.size(20.dp));Text("PLAY",fontWeight=FontWeight.ExtraBold,letterSpacing=0.sp,fontSize=15.sp)}
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(top=10.dp)) {
                         MiniStat("Java runtime","Pojav integration pending",Icons.Default.Memory,Modifier.weight(1f))
                         MiniStat("Game files","Not installed",Icons.Default.Folder,Modifier.weight(1f))
