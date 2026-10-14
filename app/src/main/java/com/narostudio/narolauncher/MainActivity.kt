@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -168,6 +171,21 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var modError by remember { mutableStateOf("") }
     var modRetry by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
+    var skinUri by remember { mutableStateOf(load("skinUri", "")) }
+    val skinPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) { }
+            skinUri = uri.toString()
+            save("skinUri", skinUri)
+            toast = "Skin image selected for local preview"
+        }
+    }
 
     LaunchedEffect(search, modType, modRetry) {
         modLoading = true
@@ -190,7 +208,6 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             modLoading = false
         }
     }
-    var versionFilter by remember { mutableStateOf("Release") }
     var loaderFilter by remember { mutableStateOf(load("loader", "Vanilla")) }
     var gameVersions by remember { mutableStateOf<List<GameVersion>>(emptyList()) }
     var versionsLoading by remember { mutableStateOf(false) }
@@ -228,8 +245,17 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     Row(Modifier.fillMaxSize().background(Bg)) {
         Column(Modifier.width(176.dp).fillMaxHeight().background(Color(0xFF07111B)).padding(12.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp), modifier=Modifier.padding(bottom=18.dp)) {
-                Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Orange), contentAlignment=Alignment.Center) {
-                    Text("N", fontWeight=FontWeight.Black, color=Bg, fontSize=25.sp)
+                Box(
+                    Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
+                        .background(
+                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(Orange, Color(0xFFFFB04A))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("N", fontWeight=FontWeight.Black, color=Bg,
+                        fontSize=27.sp, letterSpacing=(-1).sp)
                 }
                 Column {
                     Text("NARO", fontSize=20.sp, fontWeight=FontWeight.Black, letterSpacing=2.sp)
@@ -253,7 +279,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             }
             Text("v1.5.0 • MILESTONE", color=Muted, fontSize=9.sp, modifier=Modifier.padding(top=10.dp))
         }
-        Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal=18.dp, vertical=14.dp)) {
+        Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal=18.dp, vertical=14.dp).animateContentSize()) {
             Row(verticalAlignment=Alignment.CenterVertically, modifier=Modifier.fillMaxWidth().padding(bottom=12.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(page.uppercase(), color=TextMain, fontSize=22.sp, fontWeight=FontWeight.Bold, letterSpacing=1.sp)
@@ -270,55 +296,34 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             when(page) {
                 "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={showPlayInfo=true})
                 "Versions" -> {
-                    Text("MOD LOADER", color=Muted, fontSize=10.sp, letterSpacing=1.sp,
-                        modifier=Modifier.padding(bottom=6.dp))
-                    Row(horizontalArrangement=Arrangement.spacedBy(6.dp),
-                        modifier=Modifier.fillMaxWidth().padding(bottom=8.dp)) {
-                        listOf("Vanilla", "Fabric", "Forge", "NeoForge", "Quilt").forEach { loader ->
-                            FilterChip(
-                                selected=loaderFilter==loader,
-                                onClick={
-                                    loaderFilter=loader
-                                    persist("loader", loader)
-                                },
-                                label={Text(loader, fontSize=10.sp)},
-                                colors=FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor=Orange,
-                                    selectedLabelColor=Bg
-                                )
-                            )
-                        }
-                    }
-                    Row(verticalAlignment=Alignment.CenterVertically,
-                        horizontalArrangement=Arrangement.spacedBy(8.dp),
-                        modifier=Modifier.fillMaxWidth().padding(bottom=8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
                         OutlinedTextField(
-                            value=versionSearch, onValueChange={versionSearch=it},
-                            modifier=Modifier.weight(1f).height(52.dp),
-                            singleLine=true,
-                            placeholder={Text("Search any Minecraft version…", fontSize=12.sp)},
-                            leadingIcon={Icon(Icons.Default.Search,null)},
-                            shape=RoundedCornerShape(10.dp)
+                            value = versionSearch,
+                            onValueChange = { versionSearch = it },
+                            modifier = Modifier.weight(1f).height(52.dp),
+                            singleLine = true,
+                            placeholder = { Text("Search Minecraft versions…", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                            shape = RoundedCornerShape(10.dp)
                         )
-                        listOf("All","Release","Snapshot","Old").forEach { f ->
-                            FilterChip(
-                                selected=versionFilter==f, onClick={versionFilter=f},
-                                label={Text(f,fontSize=10.sp)},
-                                colors=FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor=Orange, selectedLabelColor=Bg
-                                )
-                            )
+                        Surface(
+                            color = Color(0xFF422812),
+                            shape = RoundedCornerShape(9.dp)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, null, tint = Orange,
+                                    modifier = Modifier.size(15.dp))
+                                Text(" Releases", color = TextMain, fontSize = 11.sp)
+                            }
                         }
                     }
-                    Text(
-                        when (loaderFilter) {
-                            "Vanilla" -> "Official Mojang versions"
-                            else -> "$loaderFilter selected • loader installation integration is not yet enabled"
-                        },
-                        color=if(loaderFilter=="Vanilla") Muted else Orange,
-                        fontSize=10.sp,
-                        modifier=Modifier.padding(bottom=6.dp)
-                    )
                     if (versionsLoading) {
                         Row(Modifier.fillMaxWidth().padding(20.dp),
                             horizontalArrangement=Arrangement.Center,
@@ -338,10 +343,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             items(gameVersions.filter { v ->
                                 v.id.contains(versionSearch, true) &&
-                                (versionFilter=="All" ||
-                                    (versionFilter=="Release" && v.type=="release") ||
-                                    (versionFilter=="Snapshot" && v.type=="snapshot") ||
-                                    (versionFilter=="Old" && (v.type=="old_alpha" || v.type=="old_beta")))
+                                v.type == "release"
                             }, key={it.id}) { item ->
                                 Row(
                                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
@@ -507,29 +509,115 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                     )
                 }
                 "Skins & Capes" -> {
-                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.fillMaxSize()) {
-                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)) {
-                            Column(Modifier.fillMaxSize().padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                                Text("SKIN PREVIEW",color=Muted,fontSize=10.sp,letterSpacing=1.sp)
-                                Spacer(Modifier.height(14.dp))
-                                Box(Modifier.size(width=105.dp,height=150.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF18364A)),contentAlignment=Alignment.Center) {
-                                    Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFC58A61)),contentAlignment=Alignment.Center){Text("☺",fontSize=30.sp,color=Color(0xFF533322))}
-                                        Row(horizontalArrangement=Arrangement.spacedBy(3.dp)){Box(Modifier.width(27.dp).height(56.dp).background(Color(0xFF1D9C9C)));Box(Modifier.width(27.dp).height(56.dp).background(Color(0xFF1D9C9C)))}
-                                        Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){Box(Modifier.width(23.dp).height(32.dp).background(Color(0xFF303E9B)));Box(Modifier.width(23.dp).height(32.dp).background(Color(0xFF303E9B)))}
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Card(
+                            Modifier.weight(1f).fillMaxHeight(),
+                            colors = CardDefaults.cardColors(containerColor = Panel),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(
+                                Modifier.fillMaxSize().padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Person, null, tint = Orange,
+                                    modifier = Modifier.size(25.dp))
+                                Text("SKIN PREVIEW", color = Muted, fontSize = 10.sp,
+                                    letterSpacing = 1.sp)
+                                Spacer(Modifier.height(12.dp))
+                                if (skinUri.isNotBlank()) {
+                                    AsyncImage(
+                                        model = Uri.parse(skinUri),
+                                        contentDescription = "Selected local skin PNG",
+                                        modifier = Modifier.size(width = 150.dp, height = 180.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                    )
+                                } else {
+                                    Box(
+                                        Modifier.size(width = 150.dp, height = 180.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Panel2),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(Icons.Default.Image, null, tint = Muted,
+                                                modifier = Modifier.size(42.dp))
+                                            Text("No skin image selected", color = Muted,
+                                                fontSize = 10.sp)
+                                        }
                                     }
                                 }
-                                Text("Local preview placeholder",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=8.dp))
-                                Button(onClick={showAdd=true;newName=""},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),modifier=Modifier.fillMaxWidth().padding(top=10.dp)){Text("＋ Add skin entry")}
+                                Button(
+                                    onClick = { skinPicker.launch(arrayOf("image/png")) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Orange, contentColor = Bg
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                                ) {
+                                    Icon(Icons.Default.UploadFile, null,
+                                        modifier = Modifier.size(17.dp))
+                                    Text("  Choose skin PNG")
+                                }
+                                if (skinUri.isNotBlank()) {
+                                    TextButton(onClick = {
+                                        skinUri = ""
+                                        save("skinUri", "")
+                                        toast = "Local skin preview cleared"
+                                    }) { Text("Clear preview", color = Muted) }
+                                }
+                                Text(
+                                    "Local preview only • not uploaded to Minecraft",
+                                    fontSize = 10.sp, color = Muted,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
                             }
                         }
-                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)) {
-                            Column(Modifier.padding(14.dp)) {
-                                Text("MY SKINS",fontWeight=FontWeight.Bold,fontSize=14.sp)
-                                Text("Local skin names and selection",color=Muted,fontSize=10.sp,modifier=Modifier.padding(bottom=8.dp))
-                                skinNames.forEach { s -> Row(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(8.dp)).background(Panel2).clickable { toast="$s selected" }.padding(9.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Person,null,tint=Orange);Text(s,Modifier.weight(1f).padding(start=8.dp),fontSize=12.sp);IconButton(onClick={skinNames=skinNames-s;persist("skins",(skinNames-s).joinToString("\n"))},modifier=Modifier.size(28.dp)){Icon(Icons.Default.Close,null,tint=Muted,modifier=Modifier.size(16.dp))}} }
-                                Text("Capes",fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=10.dp))
-                                Text("Capes require a connected Microsoft/Mojang account and are not uploaded by this local manager.",fontSize=10.sp,color=Muted)
+                        Card(
+                            Modifier.weight(1f).fillMaxHeight(),
+                            colors = CardDefaults.cardColors(containerColor = Panel),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.fillMaxSize().padding(14.dp)) {
+                                Text("MY SKINS", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Saved local entries", color = Muted, fontSize = 10.sp,
+                                    modifier = Modifier.padding(bottom = 8.dp))
+                                skinNames.forEach { skin ->
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                            .clip(RoundedCornerShape(8.dp)).background(Panel2)
+                                            .clickable { toast = "$skin selected" }.padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Person, null, tint = Orange)
+                                        Text(skin, Modifier.weight(1f).padding(start = 8.dp),
+                                            fontSize = 12.sp)
+                                        IconButton(
+                                            onClick = {
+                                                skinNames = skinNames.filterNot { it == skin }
+                                                persist("skins", skinNames.joinToString("\\n"))
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, null, tint = Muted,
+                                                modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { showAdd = true; newName = "" },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                                ) { Text("+ Add skin entry") }
+                                Divider(Modifier.padding(vertical = 10.dp), color = Panel2)
+                                Text("CAPES", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Cape management and activation need Minecraft account authentication and are not connected yet.",
+                                    fontSize = 10.sp, color = Muted,
+                                    modifier = Modifier.padding(top = 5.dp)
+                                )
                             }
                         }
                     }
@@ -678,12 +766,31 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val loaderIcon = when (option) {
+                                "Vanilla" -> Icons.Default.Inventory2
+                                "Fabric" -> Icons.Default.Layers
+                                "Forge" -> Icons.Default.Build
+                                "NeoForge" -> Icons.Default.Extension
+                                "Quilt" -> Icons.Default.GridView
+                                else -> Icons.Default.AutoAwesome
+                            }
+                            Icon(
+                                loaderIcon, contentDescription = option,
+                                tint = if (installChoice == option) Orange else Muted,
+                                modifier = Modifier.size(21.dp)
+                            )
                             RadioButton(
                                 selected = installChoice == option,
                                 onClick = { installChoice = option },
                                 colors = RadioButtonDefaults.colors(selectedColor = Orange)
                             )
-                            Text(option, modifier = Modifier.padding(start = 6.dp), fontSize = 13.sp)
+                            Text(
+                                option,
+                                modifier = Modifier.padding(start = 6.dp),
+                                fontSize = 13.sp,
+                                fontWeight = if (installChoice == option) FontWeight.Bold
+                                    else FontWeight.Normal
+                            )
                         }
                     }
                 }
