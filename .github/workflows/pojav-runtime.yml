@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   inspect-runtime:
+    name: Inspect Pojav and Build Naro
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
@@ -29,40 +30,49 @@ jobs:
         run: |
           echo "=== Naro root ==="
           ls -la naro
-          echo "=== Gradle wrappers ==="
-          find naro -maxdepth 4 -name gradlew -type f -print
+          echo "=== Naro Gradle files ==="
+          find naro -maxdepth 4 \( -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -type f -print
           echo "=== Pojav root ==="
           ls -la pojav
-          echo "=== Pojav modules ==="
+          echo "=== Pojav Gradle modules ==="
           grep -nE 'include.*app_pojavlauncher|include.*jre_lwjgl3glfw' \
             pojav/settings.gradle 2>/dev/null || true
+          echo "=== Pojav wrapper ==="
+          test -f pojav/gradlew && echo "Pojav Gradle wrapper found"
 
-      - name: Validate Naro Gradle wrapper
-        run: |
-          if [ ! -f naro/gradlew ]; then
-            echo "::error::Naro repository root has no gradlew wrapper."
-            echo "Check the wrapper location in the repository."
-            exit 1
-          fi
-
-      - name: Set up Java 17
-        if: success()
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Verify toolchain
+        run: |
+          java -version
+          gradle --version
+          sdkmanager --list_installed
 
       - name: Build Naro APK
-        if: success()
         working-directory: naro
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Upload Naro APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: naro-debug-apk
-          path: naro/app/build/outputs/apk/debug/*.apk
+          path: naro/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
