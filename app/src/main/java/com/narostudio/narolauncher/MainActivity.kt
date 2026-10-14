@@ -3,198 +3,346 @@ package com.narostudio.narolauncher
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.*
+import org.json.JSONArray
+import org.json.JSONObject
 
-private val NaroBackground = Color(0xFF101114)
-private val NaroSurface = Color(0xFF1B1D22)
-private val NaroOrange = Color(0xFFFF7628)
-private val NaroText = Color(0xFFF4F4F5)
-private val NaroMuted = Color(0xFFA4A6AE)
+private val Bg = Color(0xFF050B12)
+private val Panel = Color(0xFF0C1723)
+private val Panel2 = Color(0xFF102131)
+private val Orange = Color(0xFFFF850F)
+private val TextMain = Color(0xFFF3F6FA)
+private val Muted = Color(0xFF91A4B7)
+private val Green = Color(0xFF35D98A)
+private val Blue = Color(0xFF43B8F5)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NaroApp() }
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        val prefs = getSharedPreferences("naro_prefs", MODE_PRIVATE)
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme(primary=Orange, background=Bg, surface=Panel, onBackground=TextMain, onSurface=TextMain)) {
+                NaroApp(
+                    load = { key, fallback -> prefs.getString(key, fallback) ?: fallback },
+                    save = { key, value -> prefs.edit().putString(key, value).apply() }
+                )
+            }
+        }
     }
 }
 
-private data class Destination(val label: String, val icon: ImageVector)
-
-private val destinations = listOf(
-    Destination("Home", Icons.Filled.Home),
-    Destination("Versions", Icons.Filled.ViewList),
-    Destination("Modrinth", Icons.Filled.Extension),
-    Destination("Skins", Icons.Filled.Person),
-    Destination("Settings", Icons.Filled.Settings)
-)
+private val navItems = listOf("Home", "Versions", "Modrinth", "Skins & Capes", "Accounts", "Settings", "Downloads")
+private val versions = listOf("1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4", "1.19.4", "1.18.2", "1.16.5", "1.12.2", "1.8.9", "1.7.10", "b1.7.3", "a1.2.6", "Snapshot 25w14a")
+private val mods = listOf("Sodium" to "Performance · Fabric · 1.20+", "Iris Shaders" to "Shaders · Fabric · 1.20+", "Lithium" to "Performance · Fabric", "Indium" to "Rendering compatibility", "JourneyMap" to "Minimap · Forge/Fabric", "Mod Menu" to "Utility · Fabric", "FerriteCore" to "Memory optimization", "Better Minecraft" to "Modpack · 1.20.1")
 
 @Composable
-private fun NaroApp() {
-    var selected by remember { mutableIntStateOf(0) }
+private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
+    var page by remember { mutableStateOf("Home") }
+    var selectedVersion by remember { mutableStateOf(load("selectedVersion", "1.20.4")) }
+    var profile by remember { mutableStateOf(load("profile", "PlayerOne")) }
+    var account by remember { mutableStateOf(load("account", "Offline account")) }
+    var orientation by remember { mutableStateOf(load("orientation", "Landscape")) }
+    var theme by remember { mutableStateOf(load("theme", "Dark (Naro Orange)")) }
+    var memory by remember { mutableFloatStateOf(load("memory","4").toFloatOrNull() ?: 4f) }
+    var fps by remember { mutableStateOf(load("fps", "Unlimited")) }
+    var graphics by remember { mutableStateOf(load("graphics", "OpenGL ES (engine pending)")) }
+    var controls by remember { mutableStateOf(load("controls", "Default")) }
+    var search by remember { mutableStateOf("") }
+    var modType by remember { mutableStateOf("Mods") }
+    var versionFilter by remember { mutableStateOf("All") }
+    var toast by remember { mutableStateOf("") }
+    var tasks by remember { mutableStateOf(load("tasks", "Sodium|Queued").split("\n").filter { it.contains("|") }) }
+    var skinNames by remember { mutableStateOf(load("skins", "Default Steve\nAlex").split("\n").filter { it.isNotBlank() }) }
+    var profileNames by remember { mutableStateOf(load("profiles", "Default\nPerformance\nVanilla").split("\n").filter { it.isNotBlank() }) }
+    var newName by remember { mutableStateOf("") }
+    var showAdd by remember { mutableStateOf(false) }
+    var showPlayInfo by remember { mutableStateOf(false) }
 
-    MaterialTheme {
-        Surface(Modifier.fillMaxSize(), color = NaroBackground, contentColor = NaroText) {
-            Scaffold(
-                containerColor = NaroBackground,
-                bottomBar = {
-                    NavigationBar(containerColor = NaroSurface, contentColor = NaroText) {
-                        destinations.forEachIndexed { index, destination ->
-                            NavigationBarItem(
-                                selected = selected == index,
-                                onClick = { selected = index },
-                                icon = { Icon(destination.icon, contentDescription = destination.label) },
-                                label = { Text(destination.label, fontSize = 10.sp) }
-                            )
-                        }
+    fun persist(key:String, value:String) = save(key,value)
+    fun addTask(name:String) {
+        tasks = (tasks + "$name|Queued").distinct()
+        persist("tasks", tasks.joinToString("\n"))
+        toast = "$name added to download queue"
+    }
+    Row(Modifier.fillMaxSize().background(Bg)) {
+        Column(Modifier.width(176.dp).fillMaxHeight().background(Color(0xFF07111B)).padding(12.dp)) {
+            Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp), modifier=Modifier.padding(bottom=18.dp)) {
+                Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Orange), contentAlignment=Alignment.Center) {
+                    Text("N", fontWeight=FontWeight.Black, color=Bg, fontSize=25.sp)
+                }
+                Column {
+                    Text("NARO", fontSize=20.sp, fontWeight=FontWeight.Black, letterSpacing=2.sp)
+                    Text("LAUNCHER", fontSize=9.sp, color=Muted, letterSpacing=2.sp)
+                }
+            }
+            navItems.forEach { item ->
+                val icon = when(item) { "Home"->Icons.Default.Home; "Versions"->Icons.Default.ViewList; "Modrinth"->Icons.Default.Search; "Skins & Capes"->Icons.Default.Person; "Accounts"->Icons.Default.AccountCircle; "Settings"->Icons.Default.Settings; else->Icons.Default.Download }
+                Row(Modifier.fillMaxWidth().padding(vertical=3.dp).clip(RoundedCornerShape(9.dp)).background(if(page==item) Color(0xFF422812) else Color.Transparent).clickable { page=item }.padding(horizontal=10.dp, vertical=10.dp), verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Icon(icon, null, tint=if(page==item) Orange else Muted, modifier=Modifier.size(18.dp))
+                    Text(item, color=if(page==item) TextMain else Muted, fontSize=12.sp, fontWeight=if(page==item) FontWeight.SemiBold else FontWeight.Normal, maxLines=1, overflow=TextOverflow.Ellipsis)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Card(colors=CardDefaults.cardColors(containerColor=Panel), shape=RoundedCornerShape(10.dp)) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("DOWNLOADS", color=Muted, fontSize=9.sp, letterSpacing=1.sp)
+                    Text("${tasks.size} queued tasks", fontSize=12.sp, fontWeight=FontWeight.SemiBold)
+                    LinearProgressIndicator(progress={ if(tasks.isEmpty()) 0f else .32f }, color=Orange, trackColor=Panel2, modifier=Modifier.fillMaxWidth().padding(top=7.dp))
+                }
+            }
+            Text("v1.5.0 • MILESTONE", color=Muted, fontSize=9.sp, modifier=Modifier.padding(top=10.dp))
+        }
+        Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal=18.dp, vertical=14.dp)) {
+            Row(verticalAlignment=Alignment.CenterVertically, modifier=Modifier.fillMaxWidth().padding(bottom=12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(page.uppercase(), color=TextMain, fontSize=22.sp, fontWeight=FontWeight.Bold, letterSpacing=1.sp)
+                    Text(when(page) { "Home"->"Play Minecraft. Your Way."; "Versions"->"Explore releases, snapshots and historical versions"; "Modrinth"->"Mods, modpacks and resource packs"; "Skins & Capes"->"Make your character yours"; "Accounts"->"Manage local profiles and sign-in status"; "Settings"->"Tune your launcher experience"; else->"Track queued downloads and installation tasks" }, color=Muted, fontSize=11.sp)
+                }
+                Surface(color=Panel, shape=RoundedCornerShape(10.dp)) {
+                    Row(Modifier.padding(horizontal=12.dp, vertical=8.dp), verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(Green))
+                        Text(profile, fontSize=12.sp, fontWeight=FontWeight.SemiBold)
+                        Icon(Icons.Default.ExpandMore, null, tint=Muted, modifier=Modifier.size(16.dp))
                     }
                 }
-            ) { innerPadding ->
-                Column(
-                    Modifier.fillMaxSize().padding(innerPadding)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("NARO", color = NaroOrange, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
-                            Text(destinations[selected].label, color = NaroText, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Surface(shape = RoundedCornerShape(50), color = NaroSurface) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Person, contentDescription = null, tint = NaroOrange)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Local profile", color = NaroMuted, fontSize = 12.sp)
+            }
+            when(page) {
+                "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={showPlayInfo=true})
+                "Versions" -> {
+                    Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp), modifier=Modifier.fillMaxWidth().padding(bottom=10.dp)) {
+                        OutlinedTextField(search,{search=it},modifier=Modifier.weight(1f).height(52.dp),singleLine=true,placeholder={Text("Search versions…",fontSize=12.sp)},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(10.dp))
+                        listOf("All","Release","Snapshot","Old").forEach { f -> FilterChip(selected=versionFilter==f,onClick={versionFilter=f},label={Text(f,fontSize=11.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Orange,selectedLabelColor=Bg)) }
+                    }
+                    LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                        items(versions.filter { it.contains(search,true) && (versionFilter=="All" || (versionFilter=="Release" && it.firstOrNull()?.isDigit()==true) || (versionFilter=="Snapshot" && it.startsWith("Snapshot")) || (versionFilter=="Old" && (it.startsWith("b")||it.startsWith("a")||it=="1.7.10"||it=="1.8.9")) ) }) { v ->
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(horizontal=12.dp, vertical=8.dp), verticalAlignment=Alignment.CenterVertically) {
+                                Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Panel2),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Orange)}
+                                Column(Modifier.weight(1f).padding(start=10.dp)) { Text(v,fontWeight=FontWeight.SemiBold,fontSize=13.sp); Text(if(v.startsWith("Snapshot")) "Snapshot • Mojang" else if(v.startsWith("a")||v.startsWith("b")) "Historical alpha/beta" else "Release • Mojang",fontSize=10.sp,color=Muted) }
+                                if(selectedVersion==v) Text("SELECTED",fontSize=9.sp,color=Green,modifier=Modifier.padding(end=8.dp))
+                                Button(onClick={selectedVersion=v;persist("selectedVersion",v);addTask("Minecraft $v")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),contentPadding=PaddingValues(horizontal=16.dp,vertical=6.dp),modifier=Modifier.height(34.dp)){Text(if(selectedVersion==v) "Install" else "Select",fontSize=11.sp)}
                             }
                         }
                     }
-                    when (selected) {
-                        0 -> HomeScreen()
-                        1 -> PlaceholderScreen("Versions", "Version discovery and installation will connect to official Minecraft metadata in upcoming milestones.")
-                        2 -> PlaceholderScreen("Modrinth", "Browse and install compatible mods, modpacks, resource packs, and shaders after the engine and profile system are integrated.")
-                        3 -> PlaceholderScreen("Skins & Capes", "Skin previews and local customization are planned. Official account skin synchronization requires supported authentication.")
-                        else -> PlaceholderScreen("Settings", "Runtime selection, graphics, controls, orientation, downloads, and diagnostics will be added with their underlying functionality.")
+                }
+                "Modrinth" -> {
+                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(bottom=8.dp)) {
+                        OutlinedTextField(search,{search=it},modifier=Modifier.weight(1f).height(52.dp),singleLine=true,placeholder={Text("Search Modrinth projects…",fontSize=12.sp)},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(10.dp))
+                        listOf("Mods","Modpacks","Resource Packs").forEach { f -> FilterChip(selected=modType==f,onClick={modType=f},label={Text(f,fontSize=10.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Orange,selectedLabelColor=Bg)) }
                     }
+                    Text("POPULAR • SAMPLE CATALOG",fontSize=10.sp,color=Muted,letterSpacing=1.sp,modifier=Modifier.padding(vertical=6.dp))
+                    LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                        items(mods.filter { it.first.contains(search,true) || it.second.contains(search,true) }) { m ->
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Box(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(if(m.first=="Sodium") Color(0xFF1D9D68) else Panel2),contentAlignment=Alignment.Center){Icon(Icons.Default.Extension,null,tint=TextMain)}
+                                Column(Modifier.weight(1f).padding(horizontal=12.dp)) { Text(m.first,fontSize=13.sp,fontWeight=FontWeight.Bold); Text(m.second,fontSize=10.sp,color=Muted) }
+                                Button(onClick={addTask("${m.first} ($modType)")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),modifier=Modifier.height(34.dp)){Text("Queue",fontSize=11.sp)}
+                            }
+                        }
+                    }
+                    Text("Live Modrinth API downloads are not enabled in this milestone; entries above are demo catalog items.",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=6.dp))
+                }
+                "Skins & Capes" -> {
+                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.fillMaxSize()) {
+                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)) {
+                            Column(Modifier.fillMaxSize().padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                                Text("SKIN PREVIEW",color=Muted,fontSize=10.sp,letterSpacing=1.sp)
+                                Spacer(Modifier.height(14.dp))
+                                Box(Modifier.size(width=105.dp,height=150.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF18364A)),contentAlignment=Alignment.Center) {
+                                    Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFC58A61)),contentAlignment=Alignment.Center){Text("☺",fontSize=30.sp,color=Color(0xFF533322))}
+                                        Row(horizontalArrangement=Arrangement.spacedBy(3.dp)){Box(Modifier.width(27.dp).height(56.dp).background(Color(0xFF1D9C9C)));Box(Modifier.width(27.dp).height(56.dp).background(Color(0xFF1D9C9C)))}
+                                        Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){Box(Modifier.width(23.dp).height(32.dp).background(Color(0xFF303E9B)));Box(Modifier.width(23.dp).height(32.dp).background(Color(0xFF303E9B)))}
+                                    }
+                                }
+                                Text("Local preview placeholder",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=8.dp))
+                                Button(onClick={showAdd=true;newName=""},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),modifier=Modifier.fillMaxWidth().padding(top=10.dp)){Text("＋ Add skin entry")}
+                            }
+                        }
+                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text("MY SKINS",fontWeight=FontWeight.Bold,fontSize=14.sp)
+                                Text("Local skin names and selection",color=Muted,fontSize=10.sp,modifier=Modifier.padding(bottom=8.dp))
+                                skinNames.forEach { s -> Row(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(8.dp)).background(Panel2).clickable { toast="$s selected" }.padding(9.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Person,null,tint=Orange);Text(s,Modifier.weight(1f).padding(start=8.dp),fontSize=12.sp);IconButton(onClick={skinNames=skinNames-s;persist("skins",(skinNames-s).joinToString("\n"))},modifier=Modifier.size(28.dp)){Icon(Icons.Default.Close,null,tint=Muted,modifier=Modifier.size(16.dp))}} }
+                                Text("Capes",fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=10.dp))
+                                Text("Capes require a connected Microsoft/Mojang account and are not uploaded by this local manager.",fontSize=10.sp,color=Muted)
+                            }
+                        }
+                    }
+                }
+                "Accounts" -> {
+                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.fillMaxSize()) {
+                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel)) { Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.AccountCircle,null,tint=Orange,modifier=Modifier.size(42.dp))
+                            Text("CURRENT ACCOUNT",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=10.dp))
+                            Text(account,fontSize=19.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(vertical=5.dp))
+                            Text("Offline profiles work for local testing only. Online-mode servers require a valid Microsoft-authenticated Minecraft account.",fontSize=11.sp,color=Muted)
+                            Button(onClick={showAdd=true;newName="";toast="Enter an offline profile name"},modifier=Modifier.fillMaxWidth().padding(top=12.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg)){Text("＋ Add offline profile")}
+                            OutlinedButton(onClick={toast="Microsoft sign-in needs a registered OAuth client and secure callback configuration; not enabled yet."},modifier=Modifier.fillMaxWidth()){Text("Connect Microsoft (setup needed)",fontSize=11.sp)}
+                        } }
+                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel)) { Column(Modifier.padding(16.dp)) {
+                            Text("PROFILES",fontSize=14.sp,fontWeight=FontWeight.Bold)
+                            profileNames.forEach { p -> Row(Modifier.fillMaxWidth().padding(top=7.dp).clip(RoundedCornerShape(8.dp)).background(Panel2).clickable{profile=p;persist("profile",p);toast="Profile switched to $p"}.padding(10.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Person,null,tint=if(profile==p) Orange else Muted);Text(p,Modifier.weight(1f).padding(start=8.dp),fontSize=12.sp);if(profile==p) Icon(Icons.Default.CheckCircle,null,tint=Green)} }
+                            OutlinedButton(onClick={showAdd=true;newName=""},modifier=Modifier.padding(top=10.dp)){Text("＋ New profile")}
+                        } }
+                    }
+                }
+                "Settings" -> {
+                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            item { SettingCard("APPEARANCE") {
+                                SettingRow("Theme","Naro Dark / Orange")
+                                SettingRow("Orientation",orientation) { orientation=if(orientation=="Landscape") "Auto" else "Landscape";persist("orientation",orientation);toast="Orientation preference saved (landscape-first)" }
+                                SettingRow("Animations","Smooth") { toast="Animation preference: Smooth" }
+                                SettingRow("Background","Minecraft landscape") { toast="Background style selected" }
+                            } }
+                            item { SettingCard("GAME") {
+                                SettingRow("Default version",selectedVersion){page="Versions"}
+                                SettingRow("Default profile",profile){page="Accounts"}
+                                SettingRow("Controls layout",controls){controls=if(controls=="Default") "Compact" else if(controls=="Compact") "Custom" else "Default";persist("controls",controls)}
+                            } }
+                        }
+                        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            item { SettingCard("PERFORMANCE & GRAPHICS") {
+                                Text("Memory allocation: ${memory.toInt()} GB",fontSize=12.sp)
+                                Slider(value=memory,onValueChange={memory=it},valueRange=1f..8f,steps=6,onValueChangeFinished={persist("memory",memory.toInt().toString())},colors=SliderDefaults.colors(thumbColor=Orange,activeTrackColor=Orange))
+                                SettingRow("Graphics backend",graphics){graphics=if(graphics.startsWith("OpenGL")) "Vulkan (engine pending)" else "OpenGL ES (engine pending)";persist("graphics",graphics)}
+                                SettingRow("FPS limit",fps){fps=when(fps){"Unlimited"->"120";"120"->"60";"60"->"30";else->"Unlimited"};persist("fps",fps)}
+                                Text("These are saved preferences; actual renderer/runtime options become active after Pojav engine integration.",fontSize=10.sp,color=Muted)
+                            } }
+                            item { SettingCard("LAUNCHER") {
+                                SettingRow("Download location","App storage"){toast="Using app-private storage"}
+                                SettingRow("Clear cache","Not available") { toast="No cached game files to clear yet" }
+                                SettingRow("Reset settings","") { showAdd=true;newName="RESET_CONFIRM" }
+                            } }
+                        }
+                    }
+                }
+                "Downloads" -> {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(bottom=10.dp)) { Text("${tasks.size} TASKS",color=Muted,fontSize=11.sp,modifier=Modifier.weight(1f)); TextButton(onClick={tasks= emptyList();persist("tasks","");toast="Queue cleared"}){Text("Clear queue",color=Orange)} }
+                        if(tasks.isEmpty()) EmptyState("All caught up","Queued version and mod items will appear here.",Icons.Default.Download)
+                        else LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            items(tasks) { task ->
+                                val parts=task.split("|")
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Downloading,null,tint=Orange,modifier=Modifier.size(28.dp))
+                                    Column(Modifier.weight(1f).padding(horizontal=12.dp)){Text(parts[0],fontWeight=FontWeight.SemiBold,fontSize=13.sp);Text(parts.getOrElse(1){"Queued"},fontSize=10.sp,color=Muted);LinearProgressIndicator(progress={0f},color=Orange,trackColor=Panel2,modifier=Modifier.fillMaxWidth().padding(top=6.dp))}
+                                    TextButton(onClick={tasks=tasks.filterNot{it==task};persist("tasks",tasks.joinToString("\n"))}){Text("Remove",color=Orange)}
+                                }
+                            }
+                        }
+                        Text("Queue tracking is local. Actual downloads will be wired to Mojang/Modrinth services in the next milestone.",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=8.dp))
+                    }
+                }
+            }
+        }
+    }
+    if(toast.isNotBlank()) {
+        LaunchedEffect(toast) { kotlinx.coroutines.delay(2600); toast="" }
+        Surface(Modifier.padding(18.dp),color=Color(0xFF263544),shape=RoundedCornerShape(12.dp),shadowElevation=8.dp) {
+            Row(Modifier.padding(horizontal=14.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Default.Info,null,tint=Orange);Text(toast,fontSize=12.sp);IconButton(onClick={toast=""},modifier=Modifier.size(24.dp)){Icon(Icons.Default.Close,null,tint=Muted)}} 
+        }
+    }
+    if(showAdd) {
+        AlertDialog(onDismissRequest={showAdd=false},title={Text(if(newName=="RESET_CONFIRM") "Reset launcher settings?" else "Add to Naro Launcher")},text={
+            if(newName=="RESET_CONFIRM") Text("Reset saved settings to their defaults? Existing profile and skin names will remain.")
+            else Column { Text("Create a local entry. Microsoft authentication and actual skin upload need separate integration.",fontSize=12.sp,color=Muted);Spacer(Modifier.height(8.dp));OutlinedTextField(newName,{newName=it},label={Text("Name")},singleLine=true) }
+        },confirmButton={TextButton(onClick={
+            if(newName=="RESET_CONFIRM") { memory=4f;fps="Unlimited";graphics="OpenGL ES (engine pending)";orientation="Landscape";controls="Default";persist("memory","4");persist("fps",fps);persist("graphics",graphics);persist("orientation",orientation);persist("controls",controls) }
+            else if(newName.isNotBlank()) {
+                if(page=="Skins & Capes") { skinNames=(skinNames+newName).distinct();persist("skins",skinNames.joinToString("\n")) }
+                else if(page=="Accounts") { account=newName;profile=newName;persist("account",account);persist("profile",profile);profileNames=(profileNames+newName).distinct();persist("profiles",profileNames.joinToString("\n")) }
+                else { profileNames=(profileNames+newName).distinct();persist("profiles",profileNames.joinToString("\n"));profile=newName;persist("profile",profile) }
+            }
+            showAdd=false;newName=""
+        }){Text("Save",color=Orange)},dismissButton={TextButton(onClick={showAdd=false}){Text("Cancel")}})
+    }
+    if(showPlayInfo) AlertDialog(onDismissRequest={showPlayInfo=false},icon={Icon(Icons.Default.SportsEsports,null,tint=Orange)},title={Text("Game engine integration pending")},text={Text("The launcher interface and local management features are in place. Real Minecraft gameplay requires integrating PojavLauncher’s runtime, version installer, libraries, authentication, and renderer. Play is disabled rather than pretending the game launched.")},confirmButton={TextButton(onClick={showPlayInfo=false}){Text("Got it",color=Orange)}})
+}
+
+@Composable
+private fun HomePage(profile:String, account:String, version:String, tasks:Int, onVersion:()->Unit, onMods:()->Unit, onSkins:()->Unit, onSettings:()->Unit, onPlay:()->Unit) {
+    Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1.25f),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+            Card(Modifier.fillMaxWidth().height(122.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF132638)),shape=RoundedCornerShape(14.dp)) {
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF17374B),Color(0xFF2E281F),Color(0xFF101C28)))).padding(16.dp)) {
+                    Column(Modifier.align(Alignment.CenterStart)) {
+                        Text("GOOD TO SEE YOU",fontSize=10.sp,color=Orange,letterSpacing=1.sp)
+                        Text(profile,fontSize=22.sp,fontWeight=FontWeight.Bold)
+                        Text("$account  •  Offline-ready profile",fontSize=11.sp,color=Muted)
+                    }
+                    Icon(Icons.Default.Landscape,null,tint=Color(0xFF627D89),modifier=Modifier.size(90.dp).align(Alignment.CenterEnd))
+                }
+            }
+            Card(Modifier.fillMaxWidth().weight(1f),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxSize().padding(14.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF31583C)),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Color(0xFF9CE06B),modifier=Modifier.size(30.dp))};Column(Modifier.weight(1f).padding(start=10.dp)){Text("Minecraft $version",fontSize=15.sp,fontWeight=FontWeight.Bold);Text("Selected version • Runtime not configured",fontSize=10.sp,color=Muted)};IconButton(onClick=onVersion){Icon(Icons.Default.ExpandMore,null,tint=Muted)}}
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick=onPlay,modifier=Modifier.fillMaxWidth().height(44.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),shape=RoundedCornerShape(9.dp)){Icon(Icons.Default.PlayArrow,null);Text("  PLAY",fontWeight=FontWeight.Black,letterSpacing=1.sp)}
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(top=10.dp)) {
+                        MiniStat("Java runtime","Pojav integration pending",Icons.Default.Memory,Modifier.weight(1f))
+                        MiniStat("Game files","Not installed",Icons.Default.Folder,Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+            Text("QUICK ACCESS",fontSize=10.sp,color=Muted,letterSpacing=1.sp)
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { QuickTile("Versions",Icons.Default.ViewList,Modifier.weight(1f),onVersion);QuickTile("Modrinth",Icons.Default.Extension,Modifier.weight(1f),onMods) }
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { QuickTile("Skins",Icons.Default.Person,Modifier.weight(1f),onSkins);QuickTile("Settings",Icons.Default.Settings,Modifier.weight(1f),onSettings) }
+            Card(Modifier.fillMaxWidth().weight(1f),colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(12.dp)) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically){Text("RECENT ACTIVITY",fontSize=10.sp,color=Muted,letterSpacing=1.sp,modifier=Modifier.weight(1f));Text("$tasks queued",fontSize=10.sp,color=Orange)}
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.CheckCircle,null,tint=Green);Column(Modifier.padding(start=9.dp)){Text("Launcher initialized",fontSize=12.sp,fontWeight=FontWeight.SemiBold);Text("Settings and profiles save locally",fontSize=10.sp,color=Muted)}}
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Info,null,tint=Orange);Column(Modifier.padding(start=9.dp)){Text("Pojav engine adapter",fontSize=12.sp,fontWeight=FontWeight.SemiBold);Text("Needed for actual gameplay",fontSize=10.sp,color=Muted)}}
                 }
             }
         }
     }
 }
 
-@Composable
-private fun HomeScreen() {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = NaroSurface)) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("YOUR NEXT WORLD", color = NaroOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Text("A new way to play.", color = NaroText, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-            Text("A fresh launcher, built from the ground up for Android.", color = NaroMuted, fontSize = 14.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusPill("Engine", "Not integrated")
-                StatusPill("Build", "Milestone 1")
-            }
-            Button(
-                onClick = {},
-                enabled = false,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    disabledContainerColor = NaroOrange.copy(alpha = 0.35f),
-                    disabledContentColor = NaroText.copy(alpha = 0.7f)
-                )
-            ) { Text("PLAY  ·  ENGINE NOT READY", fontWeight = FontWeight.Bold) }
-            Text("Play stays disabled until a real Android Java engine and launch pipeline are integrated and verified.", color = NaroMuted, fontSize = 12.sp)
-        }
-    }
-    Text("QUICK ACCESS", color = NaroMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        QuickCard("Versions", Icons.Filled.ViewList, Modifier.weight(1f))
-        QuickCard("Downloads", Icons.Filled.Download, Modifier.weight(1f))
-    }
-    QuickCard("Modrinth", Icons.Filled.Extension, Modifier.fillMaxWidth())
-    Text("PROJECT STATUS", color = NaroMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-    Text("The baseline UI is in place. Next: validate engine source, native build requirements, Android runtimes, and licensing before integration.", color = NaroMuted, fontSize = 13.sp)
-}
-
-@Composable
-private fun StatusPill(label: String, value: String) {
-    Surface(shape = RoundedCornerShape(12.dp), color = NaroBackground) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-            Text(label, color = NaroMuted, fontSize = 10.sp)
-            Text(value, color = NaroText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
+@Composable private fun MiniStat(title:String,value:String,icon:androidx.compose.ui.graphics.vector.ImageVector,modifier:Modifier=Modifier) {
+    Row(modifier.clip(RoundedCornerShape(9.dp)).background(Panel2).padding(9.dp),verticalAlignment=Alignment.CenterVertically) {
+        Icon(icon,null,tint=Orange,modifier=Modifier.size(20.dp));Column(Modifier.padding(start=7.dp)){Text(title,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(value,fontSize=8.sp,color=Muted,maxLines=1,overflow=TextOverflow.Ellipsis)}
     }
 }
-
-@Composable
-private fun QuickCard(title: String, icon: ImageVector, modifier: Modifier = Modifier) {
-    Card(modifier, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = NaroSurface)) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(Modifier.background(NaroOrange.copy(alpha = 0.14f), RoundedCornerShape(12.dp)).padding(10.dp)) {
-                Icon(icon, contentDescription = null, tint = NaroOrange)
-            }
-            Text(title, color = NaroText, fontWeight = FontWeight.SemiBold)
-        }
+@Composable private fun QuickTile(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,modifier:Modifier=Modifier,action:()->Unit) {
+    Column(modifier.clip(RoundedCornerShape(10.dp)).background(Panel).clickable(onClick=action).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+        Icon(icon,null,tint=Orange,modifier=Modifier.size(25.dp));Text(title,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=6.dp))
     }
 }
-
-@Composable
-private fun PlaceholderScreen(title: String, description: String) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = NaroSurface)) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, color = NaroOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Text("Coming in its implementation milestone", color = NaroText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text(description, color = NaroMuted, fontSize = 14.sp)
-        }
+@Composable private fun SettingCard(title:String,content:@Composable ColumnScope.()->Unit) {
+    Card(colors=CardDefaults.cardColors(containerColor=Panel),shape=RoundedCornerShape(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(13.dp)) { Text(title,fontSize=10.sp,color=Orange,letterSpacing=1.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(bottom=8.dp));content() }
+    }
+}
+@Composable private fun SettingRow(label:String,value:String,onClick:()->Unit={}) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).clickable(onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(label,fontSize=12.sp,modifier=Modifier.weight(1f))
+        Text(value,fontSize=10.sp,color=Muted,maxLines=1,overflow=TextOverflow.Ellipsis)
+        Icon(Icons.Default.ChevronRight,null,tint=Muted,modifier=Modifier.size(17.dp))
+    }
+}
+@Composable private fun EmptyState(title:String,description:String,icon:androidx.compose.ui.graphics.vector.ImageVector) {
+    Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+        Icon(icon,null,tint=Orange,modifier=Modifier.size(42.dp));Text(title,fontSize=18.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=10.dp));Text(description,fontSize=12.sp,color=Muted)
     }
 }

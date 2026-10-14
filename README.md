@@ -1,26 +1,16 @@
 # Naro Launcher
 
-A Naro-branded Android launcher project for Minecraft: Java Edition.
+Landscape-first Android Minecraft Java launcher UI and management foundation, styled to match the supplied NARO reference.
 
-**Current milestone:** clean Android baseline and CI build. This baseline is not yet a playable Minecraft launcher; the game engine, compatible Android Java runtimes, graphics stack, and launch pipeline must be integrated and tested in later milestones.
+## Included
+- Landscape-first navigation and responsive dark/orange UI
+- Home dashboard, version browser, Modrinth search, skins/capes, accounts, profiles, downloads, settings
+- Persistent settings, profiles, local/offline account label, skin entries, and download task list using SharedPreferences
+- Runtime/graphics integration boundary for a future PojavLauncher engine adapter
+- GitHub Actions debug APK workflow
 
-## Project
-- Android / Kotlin / Jetpack Compose
-- Application ID: `com.narostudio.narolauncher`
-- Dark interface with Naro orange accents
-- GitHub Actions debug APK artifact
+## Important
+This is a management/UI milestone, not yet a playable Minecraft launcher. Microsoft OAuth, Mojang skin upload, Modrinth project downloads, and actual version installation require their respective API/download/auth flows to be implemented and tested. No fake sign-in or fake game launch is presented as real. The Play action explains that the Pojav engine adapter is not integrated yet.
 
 ## Build
-Requires JDK 17 and Android SDK platform/build tools for API 35.
-
-```bash
-gradle --no-daemon :app:assembleDebug
-```
-
-The APK should be at `app/build/outputs/apk/debug/app-debug.apk`.
-
-## Engine direction
-Evaluate and integrate compatible, properly licensed components from the Android Java Edition launcher ecosystem rather than writing a JVM or graphics translation layer from scratch. Upstream source, current maintenance status, license obligations, runtime support, and graphics compatibility must be reviewed before integration. See [PojavLauncher source](https://github.com/TeamPojavLauncher/PojavLauncher) as an architectural reference.
-
-## Compatibility honesty
-A successful Android APK build does not prove Minecraft can launch. No game versions or rendering backends are claimed playable until launch tests on real ARM64 Android hardware are recorded. Official Minecraft metadata and legitimate account authentication will be used where applicable.
+Open in Android Studio or run `gradle :app:assembleDebug` with Android SDK 35 and JDK 17. The workflow uses Gradle 8.9 installed by GitHub Actions.
