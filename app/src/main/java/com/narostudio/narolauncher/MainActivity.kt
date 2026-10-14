@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -136,19 +137,23 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var modResults by remember { mutableStateOf<List<ModrinthProject>>(emptyList()) }
     var modLoading by remember { mutableStateOf(false) }
     var modError by remember { mutableStateOf("") }
+    var modRetry by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
 
-    LaunchedEffect(search, modType) {
-        delay(350)
+    LaunchedEffect(search, modType, modRetry) {
         modLoading = true
         modError = ""
         try {
+            delay(350)
             val type = when (modType) {
                 "Modpacks" -> "modpack"
                 "Resource Packs" -> "resourcepack"
                 else -> "mod"
             }
-            modResults = searchModrinth(search.trim(), type)
+            val results = searchModrinth(search.trim(), type)
+            modResults = results
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             modError = e.message ?: "Could not connect to Modrinth."
             modResults = emptyList()
@@ -283,8 +288,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                 Text(modError, color = Muted, fontSize = 11.sp,
                                     modifier = Modifier.padding(top = 5.dp))
                                 TextButton(onClick = {
-                                    search = search.trim()
-                                    modType = modType
+                                    modRetry++
                                 }) { Text("Retry", color = Orange) }
                             }
                         }
