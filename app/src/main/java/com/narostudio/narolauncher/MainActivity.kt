@@ -80,6 +80,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun launchPojavRuntime(context: android.content.Context) {
+    val packages = listOf(
+        "net.kdt.pojavlaunch.debug",
+        "net.kdt.pojavlaunch"
+    )
+
+    for (packageName in packages) {
+        val intent = context.packageManager
+            .getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            try {
+                context.startActivity(intent)
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the other known package variant.
+            }
+        }
+    }
+
+    android.widget.Toast.makeText(
+        context,
+        "Pojav runtime isn't installed. Install the Pojav APK first.",
+        android.widget.Toast.LENGTH_LONG
+    ).show()
+}
+
 private val navItems = listOf("Home", "Versions", "Modrinth", "Skins & Capes", "Accounts", "Settings", "Downloads")
 private data class GameVersion(val id: String, val type: String)
 
@@ -384,7 +410,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                 }
             }
             when(page) {
-                "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={showPlayInfo=true})
+                "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={launchPojavRuntime(context)})
                 "Versions" -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
