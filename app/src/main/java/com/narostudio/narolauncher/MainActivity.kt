@@ -171,6 +171,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var modError by remember { mutableStateOf("") }
     var modRetry by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
+    var toast by remember { mutableStateOf("") }
     var skinUri by remember { mutableStateOf(load("skinUri", "")) }
     val skinPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -225,7 +226,6 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             versionsLoading = false
         }
     }
-    var toast by remember { mutableStateOf("") }
     var tasks by remember { mutableStateOf(load("tasks", "Sodium|Queued").split("\n").filter { it.contains("|") }) }
     var skinNames by remember { mutableStateOf(load("skins", "Default Steve\nAlex").split("\n").filter { it.isNotBlank() }) }
     var profileNames by remember { mutableStateOf(load("profiles", "Default\nPerformance\nVanilla").split("\n").filter { it.isNotBlank() }) }
