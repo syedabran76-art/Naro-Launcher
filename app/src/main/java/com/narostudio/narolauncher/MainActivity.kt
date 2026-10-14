@@ -87,7 +87,7 @@ private data class ModrinthProject(
 private suspend fun searchModrinth(query: String, type: String): List<ModrinthProject> =
     withContext(Dispatchers.IO) {
         val q = URLEncoder.encode(query.ifBlank { "minecraft" }, "UTF-8")
-        val facets = URLEncoder.encode("[[\\"project_type:$type\\"]]", "UTF-8")
+        val facets = URLEncoder.encode("[[\"project_type:$type\"]]", "UTF-8")
         val url = URL("https://api.modrinth.com/v2/search?query=$q&facets=$facets&limit=30")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
