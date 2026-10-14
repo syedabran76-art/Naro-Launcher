@@ -1,0 +1,57 @@
+name: Naro - Pojav Runtime Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Naro Launcher
+        uses: actions/checkout@v4
+        with:
+          path: naro
+
+      - name: Checkout Pojav source
+        uses: actions/checkout@v4
+        with:
+          repository: TeamPojavLauncher/PojavLauncher
+          ref: v3_openjdk
+          submodules: recursive
+          path: pojav
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Inspect upstream modules
+        working-directory: pojav
+        run: |
+          echo "=== Gradle modules ==="
+          grep -R -nE \
+            'app_pojavlauncher|jre_lwjgl3glfw' \
+            settings.gradle settings.gradle.kts 2>/dev/null || true
+
+          echo "=== Wrapper version ==="
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build existing Naro APK
+        working-directory: naro
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload Naro APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: naro-debug-apk
+          path: naro/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
