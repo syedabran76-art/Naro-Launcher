@@ -1,0 +1,4 @@
+[submodule "third_party/PojavLauncher"]
+	path = third_party/PojavLauncher
+	url = https://github.com/TeamPojavLauncher/PojavLauncher.git
+	branch = v3_openjdk

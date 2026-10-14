@@ -80,36 +80,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun launchPojavRuntime(context: android.content.Context) {
-    val packages = listOf(
-        "net.kdt.pojavlaunch.debug",
-        "net.kdt.pojavlaunch"
-    )
-
-    for (packageName in packages) {
-        val intent = android.content.Intent().apply {
-            setClassName(
-                packageName,
-                "net.kdt.pojavlaunch.NaroLaunchBridgeActivity"
-            )
-            putExtra("com.narostudio.narolauncher.EXTRA_LAUNCH_GAME", true)
-        }
-
-        try {
-            context.startActivity(intent)
-            return
-        } catch (_: android.content.ActivityNotFoundException) {
-            // This installed Pojav build may not contain the Naro bridge.
-        } catch (_: SecurityException) {
-            // Continue to the other package variant if it is installed.
-        }
-    }
-
-    android.widget.Toast.makeText(
-        context,
-        "Install the Naro-integrated Pojav APK to launch Minecraft from here.",
-        android.widget.Toast.LENGTH_LONG
-    ).show()
+/**
+ * Naro's internal runtime entry point.
+ *
+ * The runtime host is intentionally explicit: the integrated Pojav host
+ * must be included in this APK and declared in AndroidManifest.xml before
+ * gameplay can start. Never silently launch a separate Pojav installation.
+ */
+private fun launchPojavRuntime(
+    context: android.content.Context,
+    versionId: String
+) {
+    NaroRuntime.open(context, versionId)
 }
 
 private val navItems = listOf("Home", "Versions", "Modrinth", "Skins & Capes", "Accounts", "Settings", "Downloads")
@@ -416,7 +398,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                 }
             }
             when(page) {
-                "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={launchPojavRuntime(context)})
+                "Home" -> HomePage(profile, account, selectedVersion, tasks.size, onVersion={page="Versions"}, onMods={page="Modrinth"}, onSkins={page="Skins & Capes"}, onSettings={page="Settings"}, onPlay={launchPojavRuntime(context, selectedVersion)})
                 "Versions" -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
