@@ -16,6 +16,7 @@ jobs:
       - name: Checkout Naro Launcher
         uses: actions/checkout@v4
         with:
+          ref: feature/pojav-runtime-integration
           path: naro
 
       - name: Checkout Pojav source
@@ -59,6 +60,9 @@ jobs:
           test -f gradlew
           test -f app_pojavlauncher/src/main/jni/CMakeLists.txt
           test -f app_pojavlauncher/src/main/AndroidManifest.xml
+
+      - name: Apply Naro launch bridge to Pojav
+        run: bash naro/scripts/apply-naro-bridge.sh
 
       - name: Build Pojav debug APK
         working-directory: pojav

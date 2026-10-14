@@ -87,21 +87,27 @@ private fun launchPojavRuntime(context: android.content.Context) {
     )
 
     for (packageName in packages) {
-        val intent = context.packageManager
-            .getLaunchIntentForPackage(packageName)
-        if (intent != null) {
-            try {
-                context.startActivity(intent)
-                return
-            } catch (_: android.content.ActivityNotFoundException) {
-                // Try the other known package variant.
-            }
+        val intent = android.content.Intent().apply {
+            setClassName(
+                packageName,
+                "net.kdt.pojavlaunch.NaroLaunchBridgeActivity"
+            )
+            putExtra("com.narostudio.narolauncher.EXTRA_LAUNCH_GAME", true)
+        }
+
+        try {
+            context.startActivity(intent)
+            return
+        } catch (_: android.content.ActivityNotFoundException) {
+            // This installed Pojav build may not contain the Naro bridge.
+        } catch (_: SecurityException) {
+            // Continue to the other package variant if it is installed.
         }
     }
 
     android.widget.Toast.makeText(
         context,
-        "Pojav runtime isn't installed. Install the Pojav APK first.",
+        "Install the Naro-integrated Pojav APK to launch Minecraft from here.",
         android.widget.Toast.LENGTH_LONG
     ).show()
 }
