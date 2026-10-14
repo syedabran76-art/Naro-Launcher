@@ -173,7 +173,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var modRetry by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     var toast by remember { mutableStateOf("") }
-    var skinUri by remember { mutableStateOf(load("skinUri", "")) }
+    var skinUri by remember { mutableStateOf(load("skinUri:$profile", load("skinUri", ""))) }
     val skinPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -184,12 +184,13 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                 )
             } catch (_: Exception) { }
             skinUri = uri.toString()
-            save("skinUri", skinUri)
+            save("skinUri:$profile", skinUri)
             toast = "Skin image selected for local preview"
         }
     }
 
-    var capeUri by remember { mutableStateOf(load("capeUri", "")) }
+    var capeUri by remember { mutableStateOf(load("capeUri:$profile", load("capeUri", ""))) }
+    var skinModel by remember { mutableStateOf(load("skinModel:$profile", "Classic")) }
     val capePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -200,7 +201,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                 )
             } catch (_: Exception) { }
             capeUri = uri.toString()
-            save("capeUri", capeUri)
+            save("capeUri:$profile", capeUri)
             toast = "Cape image saved for local preview"
         }
     }
@@ -558,6 +559,29 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                     modifier = Modifier.size(25.dp))
                                 Text("SKIN PREVIEW", color = Muted, fontSize = 10.sp,
                                     letterSpacing = 1.sp)
+
+                                Spacer(Modifier.height(6.dp))
+                                SingleChoiceSegmentedButtonRow(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    listOf("Classic", "Slim").forEachIndexed { index, model ->
+                                        SegmentedButton(
+                                            selected = skinModel == model,
+                                            onClick = {
+                                                skinModel = model
+                                                save("skinModel:$profile", model)
+                                                toast = "$model model saved for $profile"
+                                            },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = 2
+                                            )
+                                        ) {
+                                            Text(if (model == "Classic") "Steve" else "Alex",
+                                                fontSize = 11.sp)
+                                        }
+                                    }
+                                }
                                 Spacer(Modifier.height(12.dp))
                                 if (skinUri.isNotBlank()) {
                                     AsyncImage(
@@ -756,6 +780,9 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                         .clickable {
                                             profile = p
                                             persist("profile", p)
+                                            skinUri = load("skinUri:$p", load("skinUri", ""))
+                                            capeUri = load("capeUri:$p", load("capeUri", ""))
+                                            skinModel = load("skinModel:$p", "Classic")
                                             selectedVersion = load("profileVersion:$p", load("selectedVersion", "1.20.4"))
                                             persist("selectedVersion", selectedVersion)
                                             toast = "Switched to $p"
