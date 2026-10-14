@@ -1,6 +1,8 @@
 package com.narostudio.narolauncher
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -19,6 +21,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -67,13 +76,54 @@ class MainActivity : ComponentActivity() {
 
 private val navItems = listOf("Home", "Versions", "Modrinth", "Skins & Capes", "Accounts", "Settings", "Downloads")
 private val versions = listOf("1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4", "1.19.4", "1.18.2", "1.16.5", "1.12.2", "1.8.9", "1.7.10", "b1.7.3", "a1.2.6", "Snapshot 25w14a")
-private val mods = listOf("Sodium" to "Performance · Fabric · 1.20+", "Iris Shaders" to "Shaders · Fabric · 1.20+", "Lithium" to "Performance · Fabric", "Indium" to "Rendering compatibility", "JourneyMap" to "Minimap · Forge/Fabric", "Mod Menu" to "Utility · Fabric", "FerriteCore" to "Memory optimization", "Better Minecraft" to "Modpack · 1.20.1")
+private data class ModrinthProject(
+    val id: String,
+    val slug: String,
+    val title: String,
+    val description: String,
+    val downloads: Long
+)
+
+private suspend fun searchModrinth(query: String, type: String): List<ModrinthProject> =
+    withContext(Dispatchers.IO) {
+        val q = URLEncoder.encode(query.ifBlank { "minecraft" }, "UTF-8")
+        val facets = URLEncoder.encode("[[\\"project_type:$type\\"]]", "UTF-8")
+        val url = URL("https://api.modrinth.com/v2/search?query=$q&facets=$facets&limit=30")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10000
+            readTimeout = 15000
+            setRequestProperty("User-Agent", "NaroLauncher/1.6.0 (Android)")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            if (connection.responseCode !in 200..299) {
+                throw IllegalStateException("Modrinth returned HTTP ${connection.responseCode}")
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val hits = JSONObject(body).getJSONArray("hits")
+            (0 until hits.length()).map { i ->
+                val item = hits.getJSONObject(i)
+                ModrinthProject(
+                    id = item.optString("project_id"),
+                    slug = item.optString("slug"),
+                    title = item.optString("title", "Untitled project"),
+                    description = item.optString("description", ""),
+                    downloads = item.optLong("downloads", 0)
+                )
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
 
 @Composable
 private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var page by remember { mutableStateOf("Home") }
-    var selectedVersion by remember { mutableStateOf(load("selectedVersion", "1.20.4")) }
     var profile by remember { mutableStateOf(load("profile", "PlayerOne")) }
+    var selectedVersion by remember {
+        mutableStateOf(load("profileVersion:$profile", load("selectedVersion", "1.20.4")))
+    }
     var account by remember { mutableStateOf(load("account", "Offline account")) }
     var orientation by remember { mutableStateOf(load("orientation", "Landscape")) }
     var theme by remember { mutableStateOf(load("theme", "Dark (Naro Orange)")) }
@@ -83,6 +133,29 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var controls by remember { mutableStateOf(load("controls", "Default")) }
     var search by remember { mutableStateOf("") }
     var modType by remember { mutableStateOf("Mods") }
+    var modResults by remember { mutableStateOf<List<ModrinthProject>>(emptyList()) }
+    var modLoading by remember { mutableStateOf(false) }
+    var modError by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    LaunchedEffect(search, modType) {
+        delay(350)
+        modLoading = true
+        modError = ""
+        try {
+            val type = when (modType) {
+                "Modpacks" -> "modpack"
+                "Resource Packs" -> "resourcepack"
+                else -> "mod"
+            }
+            modResults = searchModrinth(search.trim(), type)
+        } catch (e: Exception) {
+            modError = e.message ?: "Could not connect to Modrinth."
+            modResults = emptyList()
+        } finally {
+            modLoading = false
+        }
+    }
     var versionFilter by remember { mutableStateOf("All") }
     var toast by remember { mutableStateOf("") }
     var tasks by remember { mutableStateOf(load("tasks", "Sodium|Queued").split("\n").filter { it.contains("|") }) }
@@ -153,27 +226,133 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                 Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Panel2),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Orange)}
                                 Column(Modifier.weight(1f).padding(start=10.dp)) { Text(v,fontWeight=FontWeight.SemiBold,fontSize=13.sp); Text(if(v.startsWith("Snapshot")) "Snapshot • Mojang" else if(v.startsWith("a")||v.startsWith("b")) "Historical alpha/beta" else "Release • Mojang",fontSize=10.sp,color=Muted) }
                                 if(selectedVersion==v) Text("SELECTED",fontSize=9.sp,color=Green,modifier=Modifier.padding(end=8.dp))
-                                Button(onClick={selectedVersion=v;persist("selectedVersion",v);addTask("Minecraft $v")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),contentPadding=PaddingValues(horizontal=16.dp,vertical=6.dp),modifier=Modifier.height(34.dp)){Text(if(selectedVersion==v) "Install" else "Select",fontSize=11.sp)}
+                                Button(onClick={selectedVersion=v;persist("selectedVersion",v);persist("profileVersion:$profile",v);addTask("Minecraft $v")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),contentPadding=PaddingValues(horizontal=16.dp,vertical=6.dp),modifier=Modifier.height(34.dp)){Text(if(selectedVersion==v) "Install" else "Select",fontSize=11.sp)}
                             }
                         }
                     }
                 }
                 "Modrinth" -> {
-                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(bottom=8.dp)) {
-                        OutlinedTextField(search,{search=it},modifier=Modifier.weight(1f).height(52.dp),singleLine=true,placeholder={Text("Search Modrinth projects…",fontSize=12.sp)},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(10.dp))
-                        listOf("Mods","Modpacks","Resource Packs").forEach { f -> FilterChip(selected=modType==f,onClick={modType=f},label={Text(f,fontSize=10.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Orange,selectedLabelColor=Bg)) }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            modifier = Modifier.weight(1f).height(52.dp),
+                            singleLine = true,
+                            placeholder = { Text("Search real Modrinth projects…", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        listOf("Mods", "Modpacks", "Resource Packs").forEach { f ->
+                            FilterChip(
+                                selected = modType == f,
+                                onClick = { modType = f },
+                                label = { Text(f, fontSize = 10.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Orange,
+                                    selectedLabelColor = Bg
+                                )
+                            )
+                        }
                     }
-                    Text("POPULAR • SAMPLE CATALOG",fontSize=10.sp,color=Muted,letterSpacing=1.sp,modifier=Modifier.padding(vertical=6.dp))
-                    LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                        items(mods.filter { it.first.contains(search,true) || it.second.contains(search,true) }) { m ->
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Box(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(if(m.first=="Sodium") Color(0xFF1D9D68) else Panel2),contentAlignment=Alignment.Center){Icon(Icons.Default.Extension,null,tint=TextMain)}
-                                Column(Modifier.weight(1f).padding(horizontal=12.dp)) { Text(m.first,fontSize=13.sp,fontWeight=FontWeight.Bold); Text(m.second,fontSize=10.sp,color=Muted) }
-                                Button(onClick={addTask("${m.first} ($modType)")},colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),modifier=Modifier.height(34.dp)){Text("Queue",fontSize=11.sp)}
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                    ) {
+                        Text("MODRINTH PROJECTS", fontSize = 10.sp, color = Muted, letterSpacing = 1.sp,
+                            modifier = Modifier.weight(1f))
+                        if (modLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Orange,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("${modResults.size} results", fontSize = 10.sp, color = Muted)
+                        }
+                    }
+
+                    if (modError.isNotBlank()) {
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                Text("Couldn't load Modrinth", color = Orange, fontWeight = FontWeight.Bold)
+                                Text(modError, color = Muted, fontSize = 11.sp,
+                                    modifier = Modifier.padding(top = 5.dp))
+                                TextButton(onClick = {
+                                    search = search.trim()
+                                    modType = modType
+                                }) { Text("Retry", color = Orange) }
+                            }
+                        }
+                    } else if (!modLoading && modResults.isEmpty()) {
+                        EmptyState(
+                            "No projects found",
+                            "Try another search or project category.",
+                            Icons.Default.Search
+                        )
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(modResults, key = { it.id }) { project ->
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Panel)
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        Modifier.size(42.dp).clip(RoundedCornerShape(10.dp))
+                                            .background(Panel2),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Extension, null, tint = Orange)
+                                    }
+                                    Column(
+                                        Modifier.weight(1f).padding(horizontal = 12.dp)
+                                    ) {
+                                        Text(project.title, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(project.description, fontSize = 10.sp, color = Muted,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            "%,d downloads".format(project.downloads),
+                                            fontSize = 9.sp, color = Blue,
+                                            modifier = Modifier.padding(top = 3.dp)
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val typePath = when (modType) {
+                                                "Modpacks" -> "modpack"
+                                                "Resource Packs" -> "resourcepack"
+                                                else -> "mod"
+                                            }
+                                            context.startActivity(
+                                                Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse("https://modrinth.com/$typePath/${project.slug}")
+                                                )
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Orange, contentColor = Bg
+                                        ),
+                                        modifier = Modifier.height(34.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp)
+                                    ) { Text("View", fontSize = 11.sp) }
+                                }
                             }
                         }
                     }
-                    Text("Live Modrinth API downloads are not enabled in this milestone; entries above are demo catalog items.",fontSize=10.sp,color=Muted,modifier=Modifier.padding(top=6.dp))
+                    Text(
+                        "Live search is connected. Project downloads and loader/version compatibility are the next step.",
+                        fontSize = 10.sp, color = Muted,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
                 "Skins & Capes" -> {
                     Row(horizontalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.fillMaxSize()) {
@@ -215,7 +394,42 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                         } }
                         Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel)) { Column(Modifier.padding(16.dp)) {
                             Text("PROFILES",fontSize=14.sp,fontWeight=FontWeight.Bold)
-                            profileNames.forEach { p -> Row(Modifier.fillMaxWidth().padding(top=7.dp).clip(RoundedCornerShape(8.dp)).background(Panel2).clickable{profile=p;persist("profile",p);toast="Profile switched to $p"}.padding(10.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Person,null,tint=if(profile==p) Orange else Muted);Text(p,Modifier.weight(1f).padding(start=8.dp),fontSize=12.sp);if(profile==p) Icon(Icons.Default.CheckCircle,null,tint=Green)} }
+                            profileNames.forEach { p ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(top=7.dp)
+                                        .clip(RoundedCornerShape(8.dp)).background(Panel2)
+                                        .clickable {
+                                            profile = p
+                                            persist("profile", p)
+                                            selectedVersion = load("profileVersion:$p", load("selectedVersion", "1.20.4"))
+                                            persist("selectedVersion", selectedVersion)
+                                            toast = "Switched to $p"
+                                        }.padding(start=10.dp, end=4.dp, top=6.dp, bottom=6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Person, null, tint = if (profile == p) Orange else Muted)
+                                    Column(Modifier.weight(1f).padding(start=8.dp)) {
+                                        Text(p, fontSize=12.sp, fontWeight=FontWeight.SemiBold)
+                                        Text("Minecraft $selectedVersion", fontSize=9.sp, color=Muted)
+                                    }
+                                    if (profile == p) Icon(Icons.Default.CheckCircle, null, tint=Green)
+                                    if (profileNames.size > 1) {
+                                        IconButton(onClick = {
+                                            profileNames = profileNames.filterNot { it == p }
+                                            persist("profiles", profileNames.joinToString("\\n"))
+                                            if (profile == p) {
+                                                profile = profileNames.first()
+                                                persist("profile", profile)
+                                                selectedVersion = load("profileVersion:$profile", "1.20.4")
+                                                persist("selectedVersion", selectedVersion)
+                                            }
+                                            toast = "Profile removed"
+                                        }, modifier=Modifier.size(32.dp)) {
+                                            Icon(Icons.Default.DeleteOutline, null, tint=Muted, modifier=Modifier.size(17.dp))
+                                        }
+                                    }
+                                }
+                            }
                             OutlinedButton(onClick={showAdd=true;newName=""},modifier=Modifier.padding(top=10.dp)){Text("＋ New profile")}
                         } }
                     }
