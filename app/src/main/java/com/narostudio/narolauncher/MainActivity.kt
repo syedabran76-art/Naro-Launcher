@@ -165,6 +165,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var controls by remember { mutableStateOf(load("controls", "Default")) }
     var search by remember { mutableStateOf("") }
     var versionSearch by remember { mutableStateOf("") }
+    var versionTypeFilter by remember { mutableStateOf("release") }
     var modType by remember { mutableStateOf("Mods") }
     var modResults by remember { mutableStateOf<List<ModrinthProject>>(emptyList()) }
     var modLoading by remember { mutableStateOf(false) }
@@ -310,17 +311,26 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                             leadingIcon = { Icon(Icons.Default.Search, null) },
                             shape = RoundedCornerShape(10.dp)
                         )
-                        Surface(
-                            color = Color(0xFF422812),
-                            shape = RoundedCornerShape(9.dp)
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Orange,
-                                    modifier = Modifier.size(15.dp))
-                                Text(" Releases", color = TextMain, fontSize = 11.sp)
+                            listOf(
+                                "All" to "all",
+                                "Releases" to "release",
+                                "Snapshots" to "snapshot",
+                                "Old" to "old"
+                            ).forEach { (label, type) ->
+                                FilterChip(
+                                    selected = versionTypeFilter == type,
+                                    onClick = { versionTypeFilter = type },
+                                    label = { Text(label, fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF422812),
+                                        selectedLabelColor = Orange
+                                    )
+                                )
                             }
                         }
                     }
@@ -343,7 +353,12 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             items(gameVersions.filter { v ->
                                 v.id.contains(versionSearch, true) &&
-                                v.type == "release"
+                                when (versionTypeFilter) {
+                                    "release" -> v.type == "release"
+                                    "snapshot" -> v.type == "snapshot"
+                                    "old" -> v.type == "old_beta" || v.type == "old_alpha"
+                                    else -> true
+                                }
                             }, key={it.id}) { item ->
                                 Row(
                                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
@@ -750,7 +765,11 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             onDismissRequest = { showInstallChoice = false },
             title = { Text("Install Minecraft $pendingInstallVersion") },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 340.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     Text(
                         "Choose an installation type. Loader installers are not integrated yet, so this selection will not install game files.",
                         color = Muted,
