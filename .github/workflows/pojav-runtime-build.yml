@@ -18,7 +18,7 @@ steps:
     with:
       path: naro
 
-  - name: Checkout Pojav source and submodules
+  - name: Checkout Pojav source
     uses: actions/checkout@v4
     with:
       repository: TeamPojavLauncher/PojavLauncher
@@ -60,7 +60,7 @@ steps:
       test -f app_pojavlauncher/src/main/jni/CMakeLists.txt
       test -f app_pojavlauncher/src/main/AndroidManifest.xml
 
-  - name: Build Pojav full debug APK
+  - name: Build Pojav debug APK
     working-directory: pojav
     run: |
       chmod +x gradlew
