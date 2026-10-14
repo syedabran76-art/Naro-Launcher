@@ -378,21 +378,6 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                 toast="Alex model selected for $profile"
                             }
                         )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text={ Text(if(skinUri.isBlank()) "Choose skin image…" else "Change skin image…") },
-                            onClick={
-                                profileMenuExpanded=false
-                                skinPicker.launch(arrayOf("image/png", "image/*"))
-                            }
-                        )
-                        DropdownMenuItem(
-                            text={ Text(if(capeUri.isBlank()) "Choose cape image…" else "Change cape image…") },
-                            onClick={
-                                profileMenuExpanded=false
-                                capePicker.launch(arrayOf("image/png", "image/*"))
-                            }
-                        )
                         Text("Local preview only", color=Muted, fontSize=10.sp,
                             modifier=Modifier.padding(horizontal=16.dp, vertical=6.dp))
                     }
@@ -858,7 +843,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                             Button(onClick={showAdd=true;newName="";toast="Enter an offline profile name"},modifier=Modifier.fillMaxWidth().padding(top=12.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg)){Text("＋ Add offline profile")}
                             OutlinedButton(onClick={toast="Microsoft sign-in needs a registered OAuth client and secure callback configuration; not enabled yet."},modifier=Modifier.fillMaxWidth()){Text("Connect Microsoft (setup needed)",fontSize=11.sp)}
                         } }
-                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel)) { Column(Modifier.padding(16.dp)) {
+                        Card(Modifier.weight(1f).fillMaxHeight(),colors=CardDefaults.cardColors(containerColor=Panel)) { Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                             Text("PROFILES",fontSize=14.sp,fontWeight=FontWeight.Bold)
                             profileNames.forEach { p ->
                                 Row(
