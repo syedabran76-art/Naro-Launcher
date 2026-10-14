@@ -1,0 +1,91 @@
+name: Naro - Pojav Runtime Build Test
+
+on:
+workflow_dispatch:
+
+permissions:
+contents: read
+
+jobs:
+build-runtime:
+name: Build Pojav Runtime and Naro
+runs-on: ubuntu-22.04
+timeout-minutes: 120
+
+steps:
+  - name: Checkout Naro Launcher
+    uses: actions/checkout@v4
+    with:
+      path: naro
+
+  - name: Checkout Pojav source and submodules
+    uses: actions/checkout@v4
+    with:
+      repository: TeamPojavLauncher/PojavLauncher
+      ref: v3_openjdk
+      submodules: recursive
+      fetch-depth: 0
+      path: pojav
+
+  - name: Set up JDK 17
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: "17"
+
+  - name: Set up Gradle
+    uses: gradle/actions/setup-gradle@v4
+    with:
+      gradle-version: "8.14.5"
+
+  - name: Set up Android SDK
+    uses: android-actions/setup-android@v3
+    with:
+      packages: platform-tools
+
+  - name: Install Android and native build tools
+    run: |
+      sdkmanager \
+        "platforms;android-36" \
+        "build-tools;36.0.0" \
+        "ndk;29.0.14206865" \
+        "cmake;3.22.1"
+
+  - name: Verify Pojav source
+    working-directory: pojav
+    run: |
+      git log -1 --oneline
+      git submodule status
+      test -f gradlew
+      test -f app_pojavlauncher/src/main/jni/CMakeLists.txt
+      test -f app_pojavlauncher/src/main/AndroidManifest.xml
+
+  - name: Build Pojav full debug APK
+    working-directory: pojav
+    run: |
+      chmod +x gradlew
+      ./gradlew --no-daemon --stacktrace \
+        :app_pojavlauncher:assembleFullDebug
+
+  - name: Upload Pojav APK
+    if: always()
+    uses: actions/upload-artifact@v4
+    with:
+      name: pojav-runtime-debug-apk
+      path: pojav/app_pojavlauncher/build/outputs/apk/full/debug/*.apk
+      if-no-files-found: warn
+      retention-days: 14
+
+  - name: Build Naro APK
+    working-directory: naro
+    run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+  - name: Upload Naro APK
+    if: success()
+    uses: actions/upload-artifact@v4
+    with:
+      name: naro-debug-apk
+      path: naro/app/build/outputs/apk/debug/app-debug.apk
+      if-no-files-found: error
+      retention-days: 14
+
