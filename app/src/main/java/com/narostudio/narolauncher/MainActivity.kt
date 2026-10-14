@@ -271,7 +271,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                 else { profileNames=(profileNames+newName).distinct();persist("profiles",profileNames.joinToString("\n"));profile=newName;persist("profile",profile) }
             }
             showAdd=false;newName=""
-        }){Text("Save",color=Orange)},dismissButton={TextButton(onClick={showAdd=false}){Text("Cancel")}})
+        }) { Text("Save", color=Orange) } }, dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } })
     }
     if(showPlayInfo) AlertDialog(onDismissRequest={showPlayInfo=false},icon={Icon(Icons.Default.SportsEsports,null,tint=Orange)},title={Text("Game engine integration pending")},text={Text("The launcher interface and local management features are in place. Real Minecraft gameplay requires integrating PojavLauncher’s runtime, version installer, libraries, authentication, and renderer. Play is disabled rather than pretending the game launched.")},confirmButton={TextButton(onClick={showPlayInfo=false}){Text("Got it",color=Orange)}})
 }
