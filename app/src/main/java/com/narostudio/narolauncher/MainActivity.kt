@@ -251,6 +251,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var showPlayInfo by remember { mutableStateOf(false) }
     var showInstallChoice by remember { mutableStateOf(false) }
+    var profileMenuExpanded by remember { mutableStateOf(false) }
     var pendingInstallVersion by remember { mutableStateOf("") }
     var installChoice by remember { mutableStateOf(load("loader", "Vanilla")) }
 
@@ -280,14 +281,35 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                     Text("LAUNCHER", fontSize=9.sp, color=Muted, letterSpacing=2.sp)
                 }
             }
-            navItems.forEach { item ->
-                val icon = when(item) { "Home"->Icons.Default.Home; "Versions"->Icons.Default.ViewList; "Modrinth"->Icons.Default.Search; "Skins & Capes"->Icons.Default.Person; "Accounts"->Icons.Default.AccountCircle; "Settings"->Icons.Default.Settings; else->Icons.Default.Download }
-                Row(Modifier.fillMaxWidth().padding(vertical=3.dp).clip(RoundedCornerShape(9.dp)).background(if(page==item) Color(0xFF422812) else Color.Transparent).clickable { page=item }.padding(horizontal=10.dp, vertical=10.dp), verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                    Icon(icon, null, tint=if(page==item) Orange else Muted, modifier=Modifier.size(18.dp))
-                    Text(item, color=if(page==item) TextMain else Muted, fontSize=12.sp, fontWeight=if(page==item) FontWeight.SemiBold else FontWeight.Normal, maxLines=1, overflow=TextOverflow.Ellipsis)
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                items(navItems) { item ->
+                    val icon = when(item) {
+                        "Home" -> Icons.Default.Home
+                        "Versions" -> Icons.Default.ViewList
+                        "Modrinth" -> Icons.Default.Search
+                        "Skins & Capes" -> Icons.Default.Person
+                        "Accounts" -> Icons.Default.AccountCircle
+                        "Settings" -> Icons.Default.Settings
+                        else -> Icons.Default.Download
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
+                            .background(if(page==item) Color(0xFF422812) else Color.Transparent)
+                            .clickable { page=item }
+                            .padding(horizontal=10.dp, vertical=10.dp),
+                        verticalAlignment=Alignment.CenterVertically,
+                        horizontalArrangement=Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(icon, null, tint=if(page==item) Orange else Muted, modifier=Modifier.size(18.dp))
+                        Text(item, color=if(page==item) TextMain else Muted,
+                            fontSize=12.sp, fontWeight=if(page==item) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines=1, overflow=TextOverflow.Ellipsis)
+                    }
                 }
             }
-            Spacer(Modifier.weight(1f))
             Card(colors=CardDefaults.cardColors(containerColor=Panel), shape=RoundedCornerShape(10.dp)) {
                 Column(Modifier.padding(10.dp)) {
                     Text("DOWNLOADS", color=Muted, fontSize=9.sp, letterSpacing=1.sp)
@@ -303,11 +325,76 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                     Text(page.uppercase(), color=TextMain, fontSize=22.sp, fontWeight=FontWeight.Bold, letterSpacing=1.sp)
                     Text(when(page) { "Home"->"Play Minecraft. Your Way."; "Versions"->"Explore releases, snapshots and historical versions"; "Modrinth"->"Mods, modpacks and resource packs"; "Skins & Capes"->"Make your character yours"; "Accounts"->"Manage local profiles and sign-in status"; "Settings"->"Tune your launcher experience"; else->"Track queued downloads and installation tasks" }, color=Muted, fontSize=11.sp)
                 }
-                Surface(color=Panel, shape=RoundedCornerShape(10.dp)) {
-                    Row(Modifier.padding(horizontal=12.dp, vertical=8.dp), verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(Green))
-                        Text(profile, fontSize=12.sp, fontWeight=FontWeight.SemiBold)
-                        Icon(Icons.Default.ExpandMore, null, tint=Muted, modifier=Modifier.size(16.dp))
+                Box {
+                    Surface(
+                        color=Panel,
+                        shape=RoundedCornerShape(10.dp),
+                        modifier=Modifier.clickable { profileMenuExpanded=true }
+                    ) {
+                        Row(Modifier.padding(horizontal=12.dp, vertical=8.dp),
+                            verticalAlignment=Alignment.CenterVertically,
+                            horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(Green))
+                            Text(profile, fontSize=12.sp, fontWeight=FontWeight.SemiBold)
+                            Icon(Icons.Default.ExpandMore, null, tint=Muted, modifier=Modifier.size(16.dp))
+                        }
+                    }
+                    DropdownMenu(
+                        expanded=profileMenuExpanded,
+                        onDismissRequest={ profileMenuExpanded=false }
+                    ) {
+                        profileNames.forEach { p ->
+                            DropdownMenuItem(
+                                text={ Text(if(profile==p) "✓  $p" else p) },
+                                onClick={
+                                    profile=p
+                                    persist("profile", p)
+                                    skinUri=load("skinUri:$p", load("skinUri", ""))
+                                    capeUri=load("capeUri:$p", load("capeUri", ""))
+                                    skinModel=load("skinModel:$p", "Classic")
+                                    selectedVersion=load("profileVersion:$p", load("selectedVersion", "1.20.4"))
+                                    persist("selectedVersion", selectedVersion)
+                                    profileMenuExpanded=false
+                                    toast="Switched to $p"
+                                }
+                            )
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text={ Text("Steve · Classic") },
+                            onClick={
+                                skinModel="Classic"
+                                save("skinModel:$profile", skinModel)
+                                profileMenuExpanded=false
+                                toast="Steve model selected for $profile"
+                            }
+                        )
+                        DropdownMenuItem(
+                            text={ Text("Alex · Slim") },
+                            onClick={
+                                skinModel="Slim"
+                                save("skinModel:$profile", skinModel)
+                                profileMenuExpanded=false
+                                toast="Alex model selected for $profile"
+                            }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text={ Text(if(skinUri.isBlank()) "Choose skin image…" else "Change skin image…") },
+                            onClick={
+                                profileMenuExpanded=false
+                                skinPicker.launch(arrayOf("image/png", "image/*"))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text={ Text(if(capeUri.isBlank()) "Choose cape image…" else "Change cape image…") },
+                            onClick={
+                                profileMenuExpanded=false
+                                capePicker.launch(arrayOf("image/png", "image/*"))
+                            }
+                        )
+                        Text("Local preview only", color=Muted, fontSize=10.sp,
+                            modifier=Modifier.padding(horizontal=16.dp, vertical=6.dp))
                     }
                 }
             }
