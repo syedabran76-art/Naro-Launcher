@@ -112,9 +112,11 @@ private data class ModrinthProject(
 
 private suspend fun searchModrinth(query: String, type: String): List<ModrinthProject> =
     withContext(Dispatchers.IO) {
-        val q = URLEncoder.encode(query.ifBlank { "minecraft" }, "UTF-8")
+        val queryPart = if (query.isBlank()) "" else
+            "&query=" + URLEncoder.encode(query.trim(), "UTF-8")
         val facets = URLEncoder.encode("[[\"project_type:$type\"]]", "UTF-8")
-        val url = URL("https://api.modrinth.com/v2/search?query=$q&facets=$facets&limit=30")
+        val sort = if (query.isBlank()) "downloads" else "relevance"
+        val url = URL("https://api.modrinth.com/v2/search?index=$sort$queryPart&facets=$facets&limit=30")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10000
@@ -158,7 +160,8 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var fps by remember { mutableStateOf(load("fps", "Unlimited")) }
     var graphics by remember { mutableStateOf(load("graphics", "OpenGL ES (engine pending)")) }
     var controls by remember { mutableStateOf(load("controls", "Default")) }
-    var search by remember { mutableStateOf("sodium") }
+    var search by remember { mutableStateOf("") }
+    var versionSearch by remember { mutableStateOf("") }
     var modType by remember { mutableStateOf("Mods") }
     var modResults by remember { mutableStateOf<List<ModrinthProject>>(emptyList()) }
     var modLoading by remember { mutableStateOf(false) }
@@ -187,7 +190,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             modLoading = false
         }
     }
-    var versionFilter by remember { mutableStateOf("All") }
+    var versionFilter by remember { mutableStateOf("Release") }
     var loaderFilter by remember { mutableStateOf(load("loader", "Vanilla")) }
     var gameVersions by remember { mutableStateOf<List<GameVersion>>(emptyList()) }
     var versionsLoading by remember { mutableStateOf(false) }
@@ -212,6 +215,9 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
     var newName by remember { mutableStateOf("") }
     var showAdd by remember { mutableStateOf(false) }
     var showPlayInfo by remember { mutableStateOf(false) }
+    var showInstallChoice by remember { mutableStateOf(false) }
+    var pendingInstallVersion by remember { mutableStateOf("") }
+    var installChoice by remember { mutableStateOf(load("loader", "Vanilla")) }
 
     fun persist(key:String, value:String) = save(key,value)
     fun addTask(name:String) {
@@ -287,7 +293,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                         horizontalArrangement=Arrangement.spacedBy(8.dp),
                         modifier=Modifier.fillMaxWidth().padding(bottom=8.dp)) {
                         OutlinedTextField(
-                            value=search, onValueChange={search=it},
+                            value=versionSearch, onValueChange={versionSearch=it},
                             modifier=Modifier.weight(1f).height(52.dp),
                             singleLine=true,
                             placeholder={Text("Search any Minecraft version…", fontSize=12.sp)},
@@ -331,7 +337,7 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                     } else {
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             items(gameVersions.filter { v ->
-                                v.id.contains(search, true) &&
+                                v.id.contains(versionSearch, true) &&
                                 (versionFilter=="All" ||
                                     (versionFilter=="Release" && v.type=="release") ||
                                     (versionFilter=="Snapshot" && v.type=="snapshot") ||
@@ -357,11 +363,9 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                     }
                                     Button(
                                         onClick={
-                                            selectedVersion=item.id
-                                            persist("selectedVersion",item.id)
-                                            persist("profileVersion:$profile",item.id)
-                                            if(loaderFilter=="Vanilla") addTask("Minecraft ${item.id}")
-                                            else toast="$loaderFilter selected. Install integration is still required."
+                                            pendingInstallVersion = item.id
+                                            installChoice = loaderFilter
+                                            showInstallChoice = true
                                         },
                                         colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),
                                         contentPadding=PaddingValues(horizontal=14.dp,vertical=6.dp),
@@ -653,6 +657,60 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
             showAdd=false;newName=""
         }) { Text("Save", color=Orange) } }, dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } })
     }
+    if (showInstallChoice) {
+        AlertDialog(
+            onDismissRequest = { showInstallChoice = false },
+            title = { Text("Install Minecraft $pendingInstallVersion") },
+            text = {
+                Column {
+                    Text(
+                        "Choose an installation type. Loader installers are not integrated yet, so this selection will not install game files.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    listOf("Vanilla", "Fabric", "Forge", "NeoForge", "Quilt", "OptiFine").forEach { option ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (installChoice == option) Color(0xFF422812) else Panel)
+                                .clickable { installChoice = option }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = installChoice == option,
+                                onClick = { installChoice = option },
+                                colors = RadioButtonDefaults.colors(selectedColor = Orange)
+                            )
+                            Text(option, modifier = Modifier.padding(start = 6.dp), fontSize = 13.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedVersion = pendingInstallVersion
+                    persist("selectedVersion", selectedVersion)
+                    persist("profileVersion:$profile", selectedVersion)
+                    loaderFilter = installChoice
+                    persist("loader", installChoice)
+                    showInstallChoice = false
+                    toast = if (installChoice == "Vanilla") {
+                        "Selected Minecraft $selectedVersion. Game installation is not implemented yet."
+                    } else {
+                        "$installChoice selected for $selectedVersion. Its installer is not integrated yet."
+                    }
+                }) { Text("Confirm selection", color = Orange) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInstallChoice = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if(showPlayInfo) AlertDialog(onDismissRequest={showPlayInfo=false},icon={Icon(Icons.Default.SportsEsports,null,tint=Orange)},title={Text("Game engine integration pending")},text={Text("The launcher interface and local management features are in place. Real Minecraft gameplay requires integrating PojavLauncher’s runtime, version installer, libraries, authentication, and renderer. Play is disabled rather than pretending the game launched.")},confirmButton={TextButton(onClick={showPlayInfo=false}){Text("Got it",color=Orange)}})
 }
 
@@ -674,7 +732,21 @@ private fun HomePage(profile:String, account:String, version:String, tasks:Int, 
                 Column(Modifier.fillMaxSize().padding(14.dp)) {
                     Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF31583C)),contentAlignment=Alignment.Center){Icon(Icons.Default.Inventory2,null,tint=Color(0xFF9CE06B),modifier=Modifier.size(30.dp))};Column(Modifier.weight(1f).padding(start=10.dp)){Text("Minecraft $version",fontSize=15.sp,fontWeight=FontWeight.Bold);Text("Selected version • Runtime not configured",fontSize=10.sp,color=Muted)};IconButton(onClick=onVersion){Icon(Icons.Default.ExpandMore,null,tint=Muted)}}
                     Spacer(Modifier.height(10.dp))
-                    Button(onClick=onPlay,modifier=Modifier.fillMaxWidth().height(44.dp),colors=ButtonDefaults.buttonColors(containerColor=Orange,contentColor=Bg),shape=RoundedCornerShape(9.dp)){Icon(Icons.Default.PlayArrow,null,modifier=Modifier.size(20.dp));Text("PLAY",fontWeight=FontWeight.ExtraBold,letterSpacing=0.sp,fontSize=15.sp)}
+                    Button(
+                        onClick = onPlay,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Orange, contentColor = Bg),
+                        shape = RoundedCornerShape(9.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            "▶ PLAY",
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.sp,
+                            fontSize = 15.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(top=10.dp)) {
                         MiniStat("Java runtime","Pojav integration pending",Icons.Default.Memory,Modifier.weight(1f))
                         MiniStat("Game files","Not installed",Icons.Default.Folder,Modifier.weight(1f))
