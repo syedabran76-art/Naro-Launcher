@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        enableImmersiveMode()
         val prefs = getSharedPreferences("naro_prefs", MODE_PRIVATE)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary=Orange, background=Bg, surface=Panel, onBackground=TextMain, onSurface=TextMain)) {
@@ -44,6 +45,23 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableImmersiveMode()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun enableImmersiveMode() {
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        )
     }
 }
 
