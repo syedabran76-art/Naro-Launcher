@@ -189,6 +189,22 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
         }
     }
 
+    var capeUri by remember { mutableStateOf(load("capeUri", "")) }
+    val capePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) { }
+            capeUri = uri.toString()
+            save("capeUri", capeUri)
+            toast = "Cape image saved for local preview"
+        }
+    }
+
     LaunchedEffect(search, modType, modRetry) {
         modLoading = true
         modError = ""
@@ -627,11 +643,95 @@ private fun NaroApp(load: (String,String)->String, save:(String,String)->Unit) {
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
                                 ) { Text("+ Add skin entry") }
                                 Divider(Modifier.padding(vertical = 10.dp), color = Panel2)
-                                Text("CAPES", fontWeight = FontWeight.Bold)
+                                Divider(
+                                    Modifier.padding(vertical = 8.dp),
+                                    color = Panel2
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("CAPE PREVIEW", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "Choose a PNG to keep a local cape preview.",
+                                            fontSize = 10.sp,
+                                            color = Muted
+                                        )
+                                        Button(
+                                            onClick = {
+                                                capePicker.launch(arrayOf("image/png"))
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Orange,
+                                                contentColor = Bg
+                                            ),
+                                            contentPadding = PaddingValues(
+                                                horizontal = 10.dp,
+                                                vertical = 5.dp
+                                            )
+                                        ) {
+                                            Icon(
+                                                Icons.Default.UploadFile,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                if (capeUri.isBlank()) " Choose cape PNG"
+                                                else " Replace cape",
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                        if (capeUri.isNotBlank()) {
+                                            TextButton(
+                                                onClick = {
+                                                    capeUri = ""
+                                                    save("capeUri", "")
+                                                    toast = "Cape preview cleared"
+                                                },
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Text("Remove cape", color = Muted,
+                                                    fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                    if (capeUri.isNotBlank()) {
+                                        AsyncImage(
+                                            model = Uri.parse(capeUri),
+                                            contentDescription = "Selected local cape PNG",
+                                            modifier = Modifier
+                                                .width(64.dp)
+                                                .height(96.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Panel2)
+                                        )
+                                    } else {
+                                        Box(
+                                            Modifier
+                                                .width(64.dp)
+                                                .height(96.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Panel2),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Image,
+                                                contentDescription = null,
+                                                tint = Muted,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
-                                    "Cape management and activation need Minecraft account authentication and are not connected yet.",
-                                    fontSize = 10.sp, color = Muted,
-                                    modifier = Modifier.padding(top = 5.dp)
+                                    "Local preview only • not activated on Minecraft servers",
+                                    fontSize = 9.sp,
+                                    color = Muted,
+                                    modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
                         }
