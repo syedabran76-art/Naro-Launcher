@@ -1,0 +1,91 @@
+name: Naro Integrated Runtime Investigation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Naro
+        uses: actions/checkout@v4
+        with:
+          ref: feature/pojav-runtime-integration
+          path: naro
+
+      - name: Checkout Pojav source and submodules
+        uses: actions/checkout@v4
+        with:
+          repository: TeamPojavLauncher/PojavLauncher
+          ref: v3_openjdk
+          submodules: recursive
+          fetch-depth: 0
+          path: pojav
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Preserve upstream license and inspect integration requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p naro/third_party/pojav
+          cp pojav/LICENSE naro/third_party/pojav/LICENSE
+          cp pojav/README.md naro/third_party/pojav/README.md
+          cp pojav/DISCLAIMER.md naro/third_party/pojav/DISCLAIMER.md
+
+          {
+            echo "# PojavLauncher attribution"
+            echo
+            echo "Naro Launcher evaluates integration of PojavLauncher source code."
+            echo "Upstream: https://github.com/TeamPojavLauncher/PojavLauncher"
+            echo "Branch: v3_openjdk"
+            echo "License: GNU LGPL v3; see LICENSE in this directory."
+            echo "Third-party components retain their own licenses."
+            echo
+            echo "This attribution does not claim that runtime integration is complete."
+          } > naro/third_party/pojav/NOTICE.md
+
+          echo "=== Pojav Gradle modules ==="
+          sed -n '1,240p' pojav/settings.gradle
+
+          echo "=== Naro Gradle modules ==="
+          cat naro/settings.gradle.kts
+          cat naro/app/build.gradle.kts
+
+          echo "=== Pojav Android application configuration ==="
+          grep -nE 'applicationId|namespace|minSdk|targetSdk|compileSdk|sourceCompatibility|abiFilters' \
+            pojav/app_pojavlauncher/build.gradle \
+            pojav/app_pojavlauncher/build.gradle.kts 2>/dev/null || true
+
+          echo "=== Native sources and submodules ==="
+          git -C pojav submodule status
+          find pojav -maxdepth 3 \
+            \( -name CMakeLists.txt -o -name '*.mk' -o -name 'build.gradle' \) \
+            -type f | head -150
+
+          echo "=== Integration checkpoint ==="
+          echo "Pojav license and attribution copied."
+          echo "Gradle and native integration requirements inspected."
+          echo "A single installable APK is NOT claimed at this stage."
+
+      - name: Upload inspection report and attribution
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naro-pojav-integration-inspection
+          path: |
+            naro/third_party/pojav/
+            pojav/settings.gradle
+            pojav/app_pojavlauncher/build.gradle
+          if-no-files-found: warn
+          retention-days: 14
